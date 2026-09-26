@@ -14,8 +14,10 @@ permissions:
   contents: read
 
 jobs:
-  build:
-    name: Build and test
+  # The in-process tiers: unit and integration. Integration starts a PostgreSQL container, so this
+  # job needs Docker but not the application image.
+  unit-and-integration:
+    name: Unit and integration
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -27,16 +29,75 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
       - name: Build and test
-        # One job, every tier. The database tests start their own PostgreSQL container via
-        # Testcontainers; the GitHub runner already has a working Docker daemon, so there is no
-        # separate container job and no Docker-free subset to keep in step.
-        run: ./gradlew build
+        # `check` includes the black-box suite; excluding it here keeps this job fast and lets the
+        # black-box job own its own failures. The isolation guard still runs, because it belongs to
+        # :blackbox:check rather than to :blackbox:test.
+        run: ./gradlew check -x :blackbox:test
+      - name: Check every Cucumber step has a definition
+        # A dry run: no image, no Docker. Undefined or ambiguous steps fail here in seconds rather
+        # than after the black-box job has built and started the whole stack.
+        run: ./gradlew :blackbox:test -PdryRun -Ptags="not @wip"
       - name: Upload test and coverage reports
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: reports
+          name: unit-and-integration-reports
           path: |
             build/reports/tests/
             build/reports/jacoco/
           if-no-files-found: ignore
+
+  # The black-box suite: builds the real image, stands up the compose stack, talks HTTP.
+  blackbox:
+    name: Black box
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Set up JDK 21
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+      - name: Run the black-box suite
+        run: ./gradlew :blackbox:test
+      - name: Container logs
+        if: failure()
+        # Best effort: Testcontainers runs the stack under a random compose project name and removes
+        # it when the JVM exits, so `docker compose logs` would find nothing. Any compose container
+        # still present is found by the label Compose puts on it. The suite itself also prints the
+        # logs when the stack fails to start (BlackboxStack.dumpLogs).
+        run: |
+          for c in $(docker ps -a -q --filter label=com.docker.compose.service); do
+            echo "--- $(docker inspect -f '{{.Name}}' "$c")"; docker logs --tail 200 "$c" 2>&1
+          done || true
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: blackbox-reports
+          path: |
+            blackbox/build/reports/cucumber/
+            blackbox/build/test-results/
+          if-no-files-found: ignore
+      - name: Known bugs still reproduce
+        # Informational, never blocking. Each @known-bug scenario states the CORRECT behaviour, so
+        # today it should fail. When one starts passing, the bug was fixed: delete its tag.
+        if: success()
+        run: |
+          report=blackbox/build/test-results/cucumber.xml
+          # Remove the default run's report first, so a known-bug run that dies before Cucumber
+          # writes its own cannot be misread as "all known bugs now pass".
+          rm -f "$report"
+          ./gradlew :blackbox:test -Ptags=@known-bug || true
+          if [ ! -f "$report" ]; then
+            echo "::warning::The @known-bug run produced no Cucumber report; see the log above."
+            exit 0
+          fi
+          total=$(grep -o 'tests="[0-9]*"' "$report" | head -1 | grep -o '[0-9]*')
+          failing=$(grep -o 'failures="[0-9]*"' "$report" | head -1 | grep -o '[0-9]*')
+          echo "Known bugs: $failing of $total still reproduce."
+          if [ "$failing" != "$total" ]; then
+            echo "::warning::$((total - failing)) @known-bug scenario(s) now pass - remove their tag."
+          fi

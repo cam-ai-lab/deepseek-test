@@ -17,6 +17,16 @@ java {
     }
 }
 
+// A fixed boot-jar name, so the Dockerfile can COPY one unambiguous file. The default name carries
+// the version, and build/libs also normally holds the `-plain` jar, which would make
+// `COPY build/libs/*.jar` a two-source copy and therefore an error.
+//
+// (Disabling the `jar` task instead does not work: `java-test-fixtures` resolves the main classes
+// through it, so the testFixtures source set stops compiling.)
+tasks.bootJar {
+    archiveFileName.set("application.jar")
+}
+
 repositories {
     mavenCentral()
 }
@@ -103,27 +113,11 @@ testing {
                 implementation(wiremock)
             }
         }
-
-        // SYSTEM. Black box: real HTTP into a running app, all remote dependencies stubbed. Note
-        // there is still no JPA on this classpath - it must not be able to look at the database.
-        val systemTest = register<JvmTestSuite>("systemTest") {
-            dependencies {
-                implementation(platform(springBootBom))
-                implementation(project())
-                implementation(testFixtures(project()))
-                implementation("org.springframework.boot:spring-boot-starter-webmvc-test")
-                implementation("org.springframework.boot:spring-boot-starter-restclient-test")
-                implementation(testcontainersPostgres)
-                runtimeOnly("org.postgresql:postgresql")
-                runtimeOnly("org.flywaydb:flyway-database-postgresql")
-            }
-        }
     }
 }
 
 val testTask = tasks.named<Test>("test")
 val integrationTestTask = tasks.named<Test>("integrationTest")
-val systemTestTask = tasks.named<Test>("systemTest")
 
 // Every tier gets the same baseline, including the measurement hook that feeds the context
 // budget gate below.
@@ -140,7 +134,6 @@ tasks.withType<Test>().configureEach {
 }
 
 integrationTestTask { shouldRunAfter(testTask) }
-systemTestTask { shouldRunAfter(integrationTestTask) }
 
 // ---------------------------------------------------------------------------------------------
 // Guards
@@ -153,7 +146,7 @@ systemTestTask { shouldRunAfter(integrationTestTask) }
 val verifyContextBudget = tasks.register("verifyContextBudget") {
     group = "verification"
     description = "Fails if any test JVM boots more Spring ApplicationContexts than the budget."
-    dependsOn(testTask, integrationTestTask, systemTestTask)
+    dependsOn(testTask, integrationTestTask)
     outputs.upToDateWhen { false }
 
     val resultsRoot = layout.buildDirectory.dir("test-results")
@@ -169,7 +162,7 @@ val verifyContextBudget = tasks.register("verifyContextBudget") {
         )
         var foundAny = false
 
-        listOf("test", "integrationTest", "systemTest").forEach { suite ->
+        listOf("test", "integrationTest").forEach { suite ->
             val dir = resultsRoot.get().dir(suite).asFile
             val xml = dir.listFiles { f -> f.extension == "xml" }.orEmpty()
             if (xml.isEmpty()) {
@@ -274,6 +267,27 @@ val verifyTierClasspaths = tasks.register("verifyTierClasspaths") {
 }
 
 // ---------------------------------------------------------------------------------------------
+// The application image
+// ---------------------------------------------------------------------------------------------
+
+// The real, production-shaped image the black-box suite runs against. `bootJar` is an input, so the
+// image is rebuilt exactly when the application changes. Docker's layer cache makes the rebuild
+// cheap when it is not.
+//
+// The image tag is the only output that matters and it is not a file, so Gradle cannot tell whether
+// it is current. The task therefore always runs; it is the black-box suite's job to depend on it.
+val dockerImage = tasks.register<Exec>("dockerImage") {
+    group = "build"
+    description = "Builds the quotes:blackbox image from the current boot jar."
+    dependsOn(tasks.bootJar)
+    workingDir = layout.projectDirectory.asFile
+    commandLine("docker", "build", "-t", "quotes:blackbox", ".")
+    inputs.file("Dockerfile")
+    inputs.files(tasks.bootJar.map { it.outputs.files })
+    outputs.upToDateWhen { false }
+}
+
+// ---------------------------------------------------------------------------------------------
 // Coverage and report aggregation
 // ---------------------------------------------------------------------------------------------
 
@@ -281,7 +295,7 @@ jacoco {
     toolVersion = "0.8.13"
 }
 
-val coverageSuites = listOf(testTask, integrationTestTask, systemTestTask)
+val coverageSuites = listOf(testTask, integrationTestTask)
 
 // Every tier's execution data counts. There is no longer a tier that has to be kept out of the
 // default build, because every tier now runs on the same database the application does.
@@ -313,7 +327,10 @@ tasks.jacocoTestCoverageVerification {
 // `check` now requires Docker: every database test runs against a real PostgreSQL container, so
 // there is no longer a subset of the suite that can meaningfully run without one. The unit tier
 // still needs nothing.
+//
+// It also runs the black-box suite, so a local `./gradlew check` still means "everything".
 tasks.check {
-    dependsOn(integrationTestTask, systemTestTask, verifyContextBudget, verifyTierClasspaths)
+    dependsOn(integrationTestTask, verifyContextBudget, verifyTierClasspaths)
     dependsOn(tasks.jacocoTestReport, tasks.jacocoTestCoverageVerification)
+    dependsOn(":blackbox:check")
 }

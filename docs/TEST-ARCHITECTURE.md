@@ -4,6 +4,13 @@ This document explains the test setup in this repository. It assumes you can wri
 written a test or two, but it does not assume you know anything about Spring's test machinery. Every
 term is explained the first time it is used.
 
+> **Update: the system tier has been replaced.** Sections 1–11 were written when the top tier was an
+> in-JVM "system" tier (`src/systemTest`, `@FullStackTest`). It has since been replaced by a Cucumber
+> black-box suite that runs the real Docker image — see **section 12**. The earlier sections are kept
+> because the reasoning (context cost, tiers as folders, guards) still applies to the unit and
+> integration tiers; statements about the system tier describe the repository at tag
+> `before-blackbox`.
+
 ---
 
 ## 1. The one-sentence version
@@ -125,6 +132,7 @@ src/test/            UNIT         - plain Java. Fastest tier, no Spring at all, 
 src/integrationTest/ INTEGRATION  - small slices of the app, one HTTP adapter test, and the
                                    checks that the real database is wired correctly.
 src/systemTest/      SYSTEM       - the whole app, over real HTTP, on the real database.
+                                   (Replaced by the blackbox/ subproject - see section 12.)
 src/testFixtures/    (not a tier) - shared helper code the tiers all reuse.
 ```
 
@@ -266,7 +274,7 @@ would have had to be avoided so the in-memory database could also run it, which 
 schema was being shaped by a test database. Since a container was already required for some tests,
 keeping a Docker-free subset only meant the Docker-free subset was the one you trusted least.
 
-**The system tier cannot see the database, and that was enforced by the compiler.** When this tier
+**The system tier could not see the database, and that was enforced by the compiler.** When this tier
 was first written, one test reached directly into the database repository to confirm a row had been
 saved. It failed to compile, because that tier's classpath has no database library. The right fix was
 not to add the library: a "black box" test that inspects the database isn't a black box test. The fix
@@ -274,7 +282,7 @@ was to add a read endpoint to the service, so the test could confirm the saved d
 public HTTP interface a real client would use. The build enforced the design instead of a comment in
 a document enforcing it.
 
-**Shared helper code (in `src/testFixtures`) contains no Spring at all.** All four tiers compile
+**Shared helper code (in `src/testFixtures`) contains no Spring at all.** Every tier that uses it compiles
 against it, including the unit tier, so a single Spring type in it would have undone section 6. The
 same reasoning applies to the HTTP-stubbing library: it is a private implementation detail of the
 helper, not something exported to the tiers, so a tier that wants to use that library directly has to
@@ -333,3 +341,38 @@ exception — it runs anywhere, with nothing installed.
 The move to PostgreSQL was compile-checked locally and then confirmed in CI on its first run: the
 container starts, Flyway applies the migration to the real engine, the persistence slice's
 plain-JDBC assertions confirm the running engine really is PostgreSQL, and no test skipped.
+
+---
+
+## 12. The black-box migration
+
+The system tier had one flaw no guard could fix: it started the application *inside the test JVM*
+and read responses into the application's own `QuoteResponse` type, comparing numbers by value. It
+therefore could not see anything that type normalises away. The clearest case: POST returns
+`"amount":10000.00` while GET for the same quote returns `"amount":10000.0000`, because the column is
+`NUMERIC(19,4)`. Both deserialise to the same `BigDecimal` value, and the test passed.
+
+It was replaced, following `BLACKBOX-TEST-PLAN.md`, by `blackbox/`:
+
+- a **separate Gradle subproject with no dependency on the application** — `verifyBlackboxIsolation`
+  fails the build if one appears — so a scenario cannot import the response type even by accident;
+- the **real Docker image**, configured only by environment variables, started with PostgreSQL and a
+  WireMock container through Testcontainers `ComposeContainer`;
+- **Cucumber** scenarios that assert on **raw JSON tokens**, with `cucumber-spring` supplying a small,
+  test-only Spring context for the steps (never the application's);
+- **read-only SQL** for the few facts the API cannot show, through a PostgreSQL role granted only
+  `SELECT`.
+
+The context budget now covers the unit and integration tiers only; the black-box tier boots no Spring
+context of the application's. Coverage is measured over those two tiers too — JaCoCo in the test JVM
+cannot see an application running in another container — so the read path gained unit and web-slice
+tests *before* the system tier was deleted.
+
+Three defects the old tier could not see are recorded in `known_bugs.feature`, written as the correct
+behaviour and excluded by default. CI reports on every run how many still reproduce.
+
+Getting the suite to run took several CI iterations; the causes (a Dockerfile entrypoint the image
+couldn't satisfy, Compose v1 vs v2 container naming, a log dump that looked at the wrong project, and
+undefined Cucumber steps) are recorded in PR #2 and in chapter 14 of the book in `book/`. The last of
+them is why the fast CI job now runs a Cucumber dry run (`./gradlew :blackbox:test -PdryRun`), which
+needs no Docker.
