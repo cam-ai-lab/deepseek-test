@@ -2,6 +2,7 @@ package com.example.quotes.blackbox.stack;
 
 import java.io.File;
 import java.time.Duration;
+import java.util.concurrent.TimeUnit;
 
 import org.testcontainers.containers.DockerComposeContainer;
 import org.testcontainers.containers.output.OutputFrame;
@@ -93,9 +94,45 @@ public final class BlackboxStack {
         // The frame is cast because the raw receiver erases the parameter to Consumer<Object>.
         container.withLogConsumer(APP, frame -> log((OutputFrame) frame));
         container.withLogConsumer(WIREMOCK, frame -> log((OutputFrame) frame));
-        container.start();
+        try {
+            container.start();
+        }
+        catch (RuntimeException ex) {
+            dumpLogs(composeFile);
+            throw ex;
+        }
         stack = container;
         Runtime.getRuntime().addShutdownHook(new Thread(BlackboxStack::stopQuietly));
+    }
+
+    /**
+     * Prints the compose logs when the stack fails to come up.
+     *
+     * <p>Without this the failure is "container not running" plus a teardown, which tells you
+     * nothing about why - Testcontainers removes the evidence. The application's own exception is
+     * almost always the answer.
+     */
+    private static void dumpLogs(File composeFile) {
+        System.out.println("--- docker compose logs (the stack did not come up) ---");
+        try {
+            Process process = new ProcessBuilder(
+                    "docker", "compose", "-f", composeFile.getAbsolutePath(),
+                    "logs", "--no-color", "--tail", "200")
+                    .redirectErrorStream(true)
+                    .start();
+            process.getInputStream().transferTo(System.out);
+            if (!process.waitFor(30, TimeUnit.SECONDS)) {
+                process.destroyForcibly();
+                System.out.println("--- docker compose logs timed out ---");
+            }
+        }
+        catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+        }
+        catch (Exception ex) {
+            System.out.println("Could not collect compose logs: " + ex);
+        }
+        System.out.println("--- end of compose logs ---");
     }
 
     private static void log(OutputFrame frame) {
