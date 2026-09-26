@@ -1,4 +1,4 @@
-flowchart LR
+flowchart TB
     subgraph Ours["Our code"]
       S["QuoteService"] --> P["RateGateway<br/>(port: our language)"]
       P -.-> A["HttpRateGateway<br/>(adapter: their language)"]

@@ -6,8 +6,17 @@
     "primaryColor": "#ffffff",
     "primaryBorderColor": "#222222",
     "lineColor": "#222222",
-    "textColor": "#111111"
+    "textColor": "#111111",
+    "xyChart": {
+      "plotColorPalette": "#222222, #666666, #aaaaaa",
+      "backgroundColor": "#ffffff"
+    }
   },
-  "flowchart": { "curve": "basis", "padding": 12 },
-  "sequence": { "mirrorActors": false }
+  "flowchart": {
+    "curve": "basis",
+    "padding": 12
+  },
+  "sequence": {
+    "mirrorActors": false
+  }
 }

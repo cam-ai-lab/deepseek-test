@@ -1,4 +1,4 @@
-flowchart LR
+flowchart TB
     subgraph JVM["Test JVM: ./gradlew :blackbox:test"]
         F[".feature files"] --> S["Step definitions"]
         S --> RA["REST-assured"]

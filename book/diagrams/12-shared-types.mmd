@@ -1,4 +1,4 @@
-flowchart LR
+flowchart TB
     subgraph JVM["One JVM"]
       App["App serialises<br/>QuoteResponse to JSON"] -->|"JSON"| Test["Test deserialises JSON<br/>back into QuoteResponse"]
     end

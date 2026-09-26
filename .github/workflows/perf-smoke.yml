@@ -29,6 +29,16 @@ jobs:
           java-version: "21"
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
+      - name: Provide a docker-compose shim
+        # See the note in ci.yml: Testcontainers' local compose mode wants a `docker-compose`
+        # executable and the runner only has the Compose v2 plugin.
+        run: |
+          sudo tee /usr/local/bin/docker-compose >/dev/null <<'SH'
+          #!/bin/sh
+          exec docker compose "$@"
+          SH
+          sudo chmod +x /usr/local/bin/docker-compose
+          docker-compose version
       - name: Run the smoke simulation
         run: ./gradlew :blackbox:gatlingRun
       - name: Upload the Gatling report

@@ -13,8 +13,21 @@ JSON. That independence is what lets it catch a contract change rather than inhe
 ./gradlew :blackbox:test -Ptags=@known-bug
 ```
 
-Needs Docker with Compose v2. The stack takes roughly 30–60 s to come up; the scenarios themselves
-are fast.
+Needs Docker, with **a `docker-compose` executable on `PATH`**. Testcontainers' local compose mode
+shells out to that exact name. Docker Desktop and OrbStack provide it; if you have only the Compose v2
+plugin (`docker compose`) then `Local Docker Compose not found. Is docker-compose on the PATH?` is the
+error you will get, and the fix is a one-line shim:
+
+```sh
+sudo tee /usr/local/bin/docker-compose >/dev/null <<'SH'
+#!/bin/sh
+exec docker compose "$@"
+SH
+sudo chmod +x /usr/local/bin/docker-compose
+```
+
+The CI workflows do exactly this. The stack takes roughly 30–60 s to come up; the scenarios
+themselves are fast.
 
 Note the explicit `:blackbox:` prefix. Plain `./gradlew test` runs *every* project's `test` task,
 which includes this one and therefore needs Docker. The in-process tiers are `./gradlew :test` and
