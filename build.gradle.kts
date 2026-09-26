@@ -24,6 +24,7 @@ repositories {
 val springBootBom = "org.springframework.boot:spring-boot-dependencies:4.1.1"
 val wiremock = "org.wiremock:wiremock-standalone:3.13.1"
 val archunit = "com.tngtech.archunit:archunit:1.5.1"
+val testcontainersPostgres = "org.testcontainers:testcontainers-postgresql"
 
 dependencies {
     implementation(platform(springBootBom))
@@ -37,18 +38,20 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-flyway")
     runtimeOnly("org.flywaydb:flyway-database-postgresql")
 
-    runtimeOnly("com.h2database:h2")
+    // The only database engine involved, in every environment. There is deliberately no
+    // in-memory database: a migration or query that PostgreSQL rejects must fail in tests too.
     runtimeOnly("org.postgresql:postgresql")
 
     // testFixturesApi, not implementation: the fixture types are part of the surface every
     // tier compiles against, so their types must be visible downstream. THIS is what makes
     // `testFixtures(project())` work across suites in a single-module build.
     //
-    // WireMock is deliberately `implementation`, not `api`: no fixture exposes a WireMock type in
-    // a public signature, so the mocking library never lands on a consumer's compile classpath.
-    // verifyTierClasspaths enforces that.
+    // WireMock and Testcontainers are deliberately `implementation`, not `api`: no fixture exposes
+    // either type in a public signature, so neither library lands on a consumer's compile
+    // classpath. verifyTierClasspaths enforces that for the unit tier.
     testFixturesApi(platform(springBootBom))
     testFixturesImplementation(wiremock)
+    testFixturesImplementation(testcontainersPostgres)
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -84,7 +87,7 @@ testing {
             }
         }
 
-        // INTEGRATION. Spring slices and the canonical full-context configuration. H2.
+        // INTEGRATION. Spring slices, plus the checks that the real database is wired correctly.
         val integrationTest = register<JvmTestSuite>("integrationTest") {
             dependencies {
                 implementation(platform(springBootBom))
@@ -92,13 +95,17 @@ testing {
                 implementation(testFixtures(project()))
                 implementation("org.springframework.boot:spring-boot-starter-webmvc-test")
                 implementation("org.springframework.boot:spring-boot-starter-data-jpa-test")
+                implementation(testcontainersPostgres)
+                runtimeOnly("org.postgresql:postgresql")
+                runtimeOnly("org.flywaydb:flyway-database-postgresql")
                 // Declared explicitly because testFixtures only exports WireMock as an
                 // `implementation` dependency: a suite that compiles against WireMock says so.
                 implementation(wiremock)
             }
         }
 
-        // SYSTEM. Black box: real HTTP into a running app, all remote dependencies stubbed.
+        // SYSTEM. Black box: real HTTP into a running app, all remote dependencies stubbed. Note
+        // there is still no JPA on this classpath - it must not be able to look at the database.
         val systemTest = register<JvmTestSuite>("systemTest") {
             dependencies {
                 implementation(platform(springBootBom))
@@ -106,24 +113,9 @@ testing {
                 implementation(testFixtures(project()))
                 implementation("org.springframework.boot:spring-boot-starter-webmvc-test")
                 implementation("org.springframework.boot:spring-boot-starter-restclient-test")
-            }
-        }
-
-        // EPHEMERAL. Throwaway infrastructure. Needs Docker, so it stays out of `check`.
-        val ephemeralTest = register<JvmTestSuite>("ephemeralTest") {
-            dependencies {
-                implementation(platform(springBootBom))
-                implementation(project())
-                implementation(testFixtures(project()))
-                implementation("org.springframework.boot:spring-boot-starter-webmvc-test")
-                implementation("org.springframework.boot:spring-boot-starter-restclient-test")
-                // Deliberate, unlike the system tier: this tier's job is to prove the real
-                // database works, so it is allowed to inspect it directly.
-                implementation("org.springframework.boot:spring-boot-starter-data-jpa")
-                implementation("org.springframework.boot:spring-boot-testcontainers")
-                implementation("org.testcontainers:testcontainers-postgresql")
-                implementation("org.testcontainers:testcontainers-junit-jupiter")
-                implementation(wiremock)
+                implementation(testcontainersPostgres)
+                runtimeOnly("org.postgresql:postgresql")
+                runtimeOnly("org.flywaydb:flyway-database-postgresql")
             }
         }
     }
@@ -132,7 +124,6 @@ testing {
 val testTask = tasks.named<Test>("test")
 val integrationTestTask = tasks.named<Test>("integrationTest")
 val systemTestTask = tasks.named<Test>("systemTest")
-val ephemeralTestTask = tasks.named<Test>("ephemeralTest")
 
 // Every tier gets the same baseline, including the measurement hook that feeds the context
 // budget gate below.
@@ -150,7 +141,6 @@ tasks.withType<Test>().configureEach {
 
 integrationTestTask { shouldRunAfter(testTask) }
 systemTestTask { shouldRunAfter(integrationTestTask) }
-ephemeralTestTask { shouldRunAfter(systemTestTask) }
 
 // ---------------------------------------------------------------------------------------------
 // Guards
@@ -293,12 +283,9 @@ jacoco {
 
 val coverageSuites = listOf(testTask, integrationTestTask, systemTestTask)
 
-// The ephemeral suite's execution data is deliberately excluded: `check` must stay Docker-free,
-// so it must neither depend on nor consume the container-backed tier. Run `ephemeralTest`
-// explicitly to exercise it.
-val coverageData = fileTree(layout.buildDirectory)
-    .include("jacoco/*.exec")
-    .exclude("jacoco/ephemeralTest.exec")
+// Every tier's execution data counts. There is no longer a tier that has to be kept out of the
+// default build, because every tier now runs on the same database the application does.
+val coverageData = fileTree(layout.buildDirectory).include("jacoco/*.exec")
 
 tasks.jacocoTestReport {
     dependsOn(coverageSuites)
@@ -323,7 +310,9 @@ tasks.jacocoTestCoverageVerification {
     }
 }
 
-// `check` is Docker-free: the ephemeral tier is opt-in via `./gradlew ephemeralTest`.
+// `check` now requires Docker: every database test runs against a real PostgreSQL container, so
+// there is no longer a subset of the suite that can meaningfully run without one. The unit tier
+// still needs nothing.
 tasks.check {
     dependsOn(integrationTestTask, systemTestTask, verifyContextBudget, verifyTierClasspaths)
     dependsOn(tasks.jacocoTestReport, tasks.jacocoTestCoverageVerification)

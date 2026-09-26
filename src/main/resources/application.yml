@@ -1,11 +1,15 @@
 spring:
   application:
     name: quotes
+  # There is no in-memory database any more. The application runs on the same engine in every
+  # environment, so a migration that PostgreSQL rejects cannot pass in tests and fail in production.
+  # For local development: `docker compose up -d`, then `./gradlew bootRun`.
+  # Tests override these four values with a throwaway container.
   datasource:
-    url: jdbc:h2:mem:quotes;DB_CLOSE_DELAY=-1;MODE=PostgreSQL
-    username: sa
-    password: ""
-    driver-class-name: org.h2.Driver
+    url: jdbc:postgresql://localhost:5432/quotes
+    username: quotes
+    password: quotes
+    driver-class-name: org.postgresql.Driver
   jpa:
     hibernate:
       # Flyway owns the schema; Hibernate only proves the entity mapping still matches it.

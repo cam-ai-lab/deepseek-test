@@ -1,163 +1,331 @@
-# Test architecture for a heavily developed repo
+# How the tests are organised, and why
 
-The design target: a service that will grow past several hundred test classes, written by many
-people, where test *runtime* and test *trust* are what decay. This document is the design; the code
-beside it is the reference implementation. Everything claimed here was measured on this repo.
+This document explains the test setup in this repository. It assumes you can write Java and have
+written a test or two, but it does not assume you know anything about Spring's test machinery. Every
+term is explained the first time it is used.
 
-## The problem, stated precisely
+---
 
-At scale, a Spring test suite's cost is not proportional to the number of tests. It is proportional
-to the number of **distinct `ApplicationContext`s** the suite builds, multiplied by the cost of one
-build (~1-2s). Measured before this restructure: one heavyweight context was 74% of wall-clock, and
-the pure unit tests were ~1%.
+## 1. The one-sentence version
 
-Two consequences drive everything:
+Because a Spring application is slow to start up, tests reuse started-up copies of it; this
+repository is arranged so the number of copies stays small no matter how many tests you add, and so
+that the rules holding it together are enforced by the build instead of by good intentions.
 
-1. Anything that *multiplies context count* multiplies CI cost.
-2. Anything that lets a tier drift from its intent is undetectable until it is expensive.
+If that sentence didn't land, read on. It will.
 
-So: **keep context count flat as tests grow**, and **make the invariants that matter impossible to
-violate silently**.
+---
 
-## Layout
+## 2. What actually costs time in a test suite
+
+Imagine a test that needs the real application: the real database code, the real web layer, the real
+configuration. Before that test can run, Spring has to build the application inside the test process.
+That means:
+
+- creating every object the application needs,
+- working out which object depends on which and wiring them together,
+- reading configuration values,
+- opening a connection to the database.
+
+Spring calls the finished result an **`ApplicationContext`**. In plain language: it is a fully
+assembled copy of your application, sitting inside the test process, ready to be used.
+
+We will call the act of building one **"starting up the app"**, and one startup costs roughly 1 to 2
+seconds.
+
+Now here is the measurement that drives everything else in this document. In the small version of
+this repository, before the reorganisation described below:
+
+- **one** test class that started the app took **74%** of the entire suite's running time,
+- the **twenty-one** tests that needed nothing but plain Java took about **3%** of it.
+
+So the cost of a test suite is not really about *how many tests* you have. It is about *how many
+times you start the app up*. Everything that follows is about keeping that second number small.
+
+---
+
+## 3. Spring keeps a spare copy, and looks it up by fingerprint
+
+Starting the app is expensive, so Spring does not throw the copy away when the test finishes. It
+keeps it and offers it to the next test that can use it. This is a **cache**: a place to keep
+something expensive you already made, so you don't make it again. (Think of leftovers in a fridge:
+you cooked once, so the next meal takes two minutes instead of an hour.)
+
+Two pieces of vocabulary you will see everywhere:
+
+- a **cache hit** means the copy you needed was already there — fast, nothing was built;
+- a **cache miss** means it wasn't there, so Spring builds a fresh copy and stores it.
+
+The interesting question is *how Spring decides whether the copy it has is the right one*. It
+doesn't use a name you chose. It builds a **fingerprint** out of every part of the test's
+configuration. If two test classes have exactly the same fingerprint, they share one copy of the
+app. If anything differs, Spring considers it a different situation and builds a second copy.
+
+The things that go into the fingerprint include:
+
+- which configuration classes and component classes the test asked for,
+- which configuration *profiles* are active (a profile is a named set of settings, like "test" or
+  "production"),
+- which properties were overridden for the test,
+- and — this one catches people out — **which real objects the test replaced with stand-in fakes**.
+
+**A concrete example from this repository.** One test checked the exact JSON the service returns. To
+do that, it replaced the real rate-lookup object with a fake, using an annotation called
+`@MockitoBean`. That single line changed the fingerprint. From Spring's point of view it was now a
+different situation from every other test, so it could never share a copy of the app with them. Two
+test classes that both wanted "the whole app running" ended up starting it twice.
+
+---
+
+## 4. Why this becomes a serious problem in a big repository
+
+In this repository there are a handful of test classes, so a few extra copies of the app cost a few
+seconds. In a repository with several hundred test classes, written by twenty people, the same
+mechanism produces something much worse, for two reasons.
+
+**First, copies multiply.** Every slightly different test setup is another copy. Nobody decides "we
+will have forty copies of the app" — it just accumulates, one reasonable-looking variation at a
+time.
+
+**Second, there is a hidden limit.** Spring's cache does not hold unlimited copies. It holds at most
+**32**, and when it is full it throws out the copy that was used longest ago to make room. So in a
+large suite you get a loop: a copy gets thrown out, a later test needs it, Spring builds it again,
+and something else gets thrown out. Work is repeated and thrown away over and over. This is called
+**thrashing**, and it means a big suite can be slow in a way that is invisible from the outside.
+
+So the goal is: **keep the number of copies small, and don't let that number silently grow.**
+
+---
+
+## 5. The fix, part one: tiers are folders, not labels
+
+A large test suite needs categories. "These are fast tests I run constantly; these are slow ones that
+need a database." The category a test belongs to is called its **tier**.
+
+There are two ways to express a tier.
+
+**The weak way: a label.** You write a word on the test class, and the build is told to run
+everything with that word. It looks tidy, and it is what most projects do. But the label is only a
+string. Nothing checks it. And the failure mode is nasty: we renamed a label from `"ephemeral"` to
+`"ephemral"` — one letter — and the build went **green while running zero tests**. A whole category
+of testing disappeared without a single warning. We also confirmed that Gradle's built-in safety net
+for empty test runs does not catch this, because Gradle sees the test classes fine and it is JUnit
+that quietly filters them out afterwards.
+
+**The strong way: a folder.** In Gradle you can mark a folder as a **source set**. A source set is
+its own little area of the project: its own files, its own list of libraries, and its own command to
+run it. That means the tier is not written on the test — the tier *is where the test lives*. There is
+no string to mistype, and the folder can control what the test is even allowed to use, which turns
+out to be the most valuable part of all (see the next section).
+
+We use three:
 
 ```
-app/
-  src/main/java/                    production code
-  src/testFixtures/java/            shared test vocabulary: builders, fakes, a WireMock stub
-  src/test/java/                    UNIT        - JUnit + AssertJ + Mockito only
-  src/integrationTest/java/         INTEGRATION - Spring slices, H2
-  src/systemTest/java/              SYSTEM      - black box over real HTTP
-  src/ephemeralTest/java/           EPHEMERAL   - real Postgres in a container
-  src/testFixtures/resources/golden/  frozen contract fixtures, shared by any tier
+src/test/            UNIT         - plain Java. Fastest tier, no Spring at all, no Docker.
+src/integrationTest/ INTEGRATION  - small slices of the app, one HTTP adapter test, and the
+                                   checks that the real database is wired correctly.
+src/systemTest/      SYSTEM       - the whole app, over real HTTP, on the real database.
+src/testFixtures/    (not a tier) - shared helper code the tiers all reuse.
 ```
 
-Each is a Gradle **JVM Test Suite**: its own source directory, configurations, `Test` task and
-dependencies. The tier is a property of *where the code lives*, not a string on a class.
+There used to be a fourth tier whose single distinguishing feature was "runs on a real PostgreSQL
+database". Once every database test moved onto real PostgreSQL, that tier had nothing unique left,
+so it was removed rather than kept as a duplicate of the others.
 
-## The keystone: enforce by classpath, not by convention
+One consequence is worth stating plainly: **running the tests now requires Docker**, because a real
+database has to come from somewhere. The reasoning is in section 9.
 
-The unit suite's dependency block omits every `spring-boot-starter-*-test` artifact. Verified by
-deliberately adding `@SpringBootTest` to a unit test:
+There is also a fifth category that is *not* a tier: **regression tests**. A regression test does not
+check that the code is correct — it records what the code does *today*, so that if somebody changes
+it by accident, the test complains. Regression is a *purpose*, not a speed category, so those tests
+live inside whichever tier matches how they work.
+
+---
+
+## 6. The fix, part two: the folder decides which libraries the test may use
+
+This is the most important idea in the document, and it needs one more term.
+
+A **classpath** is the list of libraries that are available at a particular moment — when code is
+being compiled, or when it is being run. If a library is not on the classpath, code that mentions it
+simply will not compile.
+
+Each source set in this project has its own classpath. So the unit tier (`src/test`) has a
+deliberately short list of libraries: a test framework, an assertion library, a mocking library, and
+an architecture-checking library. What it does **not** have is Spring's *testing* library — the one
+that provides `@SpringBootTest` and the rest.
+
+The result is not a rule anyone has to remember. It is a fact about the compiler:
 
 ```
 error: package org.springframework.boot.test.context does not exist
   symbol: class SpringBootTest
 ```
 
-Be precise about what this is, because the loose version is wrong. Spring *core* is on the unit
-tier's classpath transitively through the application, and always will be. What is absent is the
-Spring **test** support, so a *static reference* to a context-booting annotation will not compile.
-Reflective use remains physically possible; it is a classpath fact, not a language-level one.
+That is the real output from deliberately writing a unit test that tried to start the app. It did not
+compile. A unit test **cannot** start the app, because the ability to do so isn't in the folder.
 
-That invariant is load-bearing and it rests on a dependency block staying correct - so it is itself
-guarded. `verifyTierClasspaths` fails if Spring test support, Testcontainers or WireMock ever reach
-the unit tier's compile classpath. It earned its place on the first run: it immediately caught
-WireMock leaking into the unit tier through the fixtures.
+**Two honest details, so this isn't oversold:**
 
-## Context economy, measured
+1. Spring's *core* libraries are still on that classpath, because the application itself is built on
+   Spring and a test in the same project sees what the application sees. What is missing is
+   specifically the test-support part. So the accurate claim is "a unit test cannot compile a
+   reference to a Spring test annotation", not "no Spring is present". In practice that is the
+   distinction that matters: you cannot accidentally start the app by writing an annotation.
+2. Because this depends on a list of libraries staying correct, it is not left to trust. There is a
+   check that fails the build if Spring's test support ever reaches that classpath — see section 8.
 
-| Tier | Context boots | Peak cached | Reuse |
-| --- | --- | --- | --- |
-| unit | 0 | 0 | - |
-| integration | 2 | 2 | 95% |
-| system | **1** | 1 | - |
+---
 
-The system tier is the demonstration: two full-stack test classes, **one** context, because both
-inherit the same composed `@FullStackTest` annotation and the same `@DynamicPropertySource` method
-declared once in a base class. The visible payoff is in the timings:
+## 7. Sharing one copy of the app on purpose
+
+The measurement in section 3 was the problem: two test classes that both wanted the whole app running
+started it twice. Here is how they were made to share.
+
+Rather than writing the setup on each test class, all the settings for "I want the whole application,
+over real HTTP" were collected into a single reusable annotation called `@FullStackTest`. Every
+black-box test uses it. Because they all use the same one, their fingerprints are identical, and
+Spring hands them the same copy.
+
+There is one subtlety worth spelling out, because it is easy to get wrong. A test can also point the
+application at a stubbed-out external service by supplying a property value at runtime. That
+mechanism is *also* part of the fingerprint — and, annoyingly, it is part of the fingerprint per
+*declaration*: if two test classes each declare their own, they get different fingerprints even when
+the value is the same. The fix is to write that declaration once, in a shared base class both tests
+extend, so there is only one declaration and therefore one fingerprint.
+
+**The result, measured:**
+
+| Tier | Copies of the app built | Reuse |
+| --- | --- | --- |
+| unit | 0 | — |
+| integration | 2 | 95% of lookups were hits |
+| system | **1**, shared by 2 test classes | — |
+
+And here is what that buys, in the suite's own timing output:
 
 ```
-quote API, black box        5 tests   5.46s   <- pays for the context build
-wire contract regression    1 test    0.02s   <- reuses it, essentially free
+quote API, black box        5 tests   5.46s   <- the one that pays for building the app
+wire contract regression    1 test    0.02s   <- reuses the same copy, essentially free
 ```
 
-Before this restructure, that second class used `@SpringBootTest` + `@MockitoBean` and therefore
-built its own context. Five rules, in order of impact:
+That second line is the whole point. A second full application test now costs two hundredths of a
+second, because it reuses a copy that already exists.
 
-1. **One canonical configuration per concern**, reached through a composed annotation.
-2. **Standardise mocks.** `@MockitoBean`, `@TestPropertySource`, `@ActiveProfiles` and
-   `@DynamicPropertySource` are all part of the cache key, so a per-class variation is a per-class
-   boot. Moving the stub wiring into one inherited base method is what merged two contexts into one.
-3. **Never `@DirtiesContext`.** A dirtied-and-rebuilt context is a context boot.
-4. **Stay under the 32-context LRU limit** or contexts are evicted and rebuilt (thrashing).
-5. **Do not raise `maxParallelForks` blindly.** The cache is `static` per JVM, so forking trades
-   CPU for context reuse.
+---
 
-## Fixtures, not copy-paste
+## 8. The guards
 
-`src/testFixtures/java` holds the shared vocabulary: `QuoteTestData` (builders),
-`StubRateGateway` (a hand-written fake for the port) and `RateServiceStub` (one shared WireMock
-server). Two scoping rules, both enforced:
+A guard is a check in the build that fails loudly when something quietly goes wrong. Guards exist
+because the dangerous failures in a test suite are the silent ones: the build goes green while
+testing less than you think it is.
 
-- The fixtures are **Spring-free**. The unit tier compiles against them, so one Spring type in a
-  public signature would break the keystone invariant.
-- WireMock is `testFixturesImplementation`, not `api`, so it is not on any consumer's compile
-  classpath. Suites that compile against WireMock declare it themselves; the system tier does not,
-  because it goes through `RateServiceStub`'s intent-revealing methods instead of the raw server.
-
-## Guards
-
-| Guard | Catches |
+| Guard | What it protects against |
 | --- | --- |
-| `verifyContextBudget` | The suite building more contexts than budgeted |
-| `verifyTierClasspaths` | The unit tier's classpath invariant decaying |
-| `failOnNoDiscoveredTests` | A suite that discovers nothing |
-| ArchUnit (`ArchitectureTest`) | Production layering regressing |
+| `verifyContextBudget` | The number of app copies creeping up |
+| `verifyTierClasspaths` | The unit tier's "no Spring test support" property decaying |
+| `failOnNoDiscoveredTests` | A tier that finds no tests at all |
+| `ArchitectureTest` (ArchUnit) | The code's internal layering quietly breaking down |
 
-`verifyContextBudget` reads Spring's `TestContext` cache statistics and gates on **`missCount` -
-contexts actually built - not `size`**. This matters and was wrong in the first draft: `size` is
-capped by the LRU `maxSize` of 32, so a suite thrashing three hundred configurations still reports
-`size = 32` and passes forever. `missCount` is the quantity that grows without bound.
+**`verifyContextBudget`** reads the statistics Spring prints about its cache and fails the build if
+too many copies of the app were built. It also fails if it finds *no* statistics at all — because a
+guard that silently stops observing things is worse than no guard. This is the same reasoning as a
+smoke alarm that beeps when its battery dies.
 
-It also fails when no suite reports statistics at all, so the measurement cannot silently stop
-working - a guard that quietly observes nothing is worse than no guard.
+One correction is worth describing, because it was a genuine bug in the first version. The guard
+originally checked **how many copies were sitting in the cache**. That is the wrong number, and
+subtly so: the cache holds at most 32 copies, so that number can never go above 32 no matter how much
+work the suite actually did. A suite that built three hundred copies would throw most away, report
+"32 in the cache", and pass the check — in exactly the situation the check existed to catch. It now
+checks **how many copies were built**, which grows without limit and reflects the real cost.
 
-## Deliberate trade-offs
+**`verifyTierClasspaths`** checks the list of libraries in section 6 and fails if Spring's test
+support, or the container-testing and HTTP-stubbing libraries, ever appear on the unit tier's
+classpath. This matters because the arrangement depends on a list of libraries, and lists of
+libraries get edited. It proved its worth immediately: on its very first run it caught one of those
+libraries leaking into the unit tier through the shared helper code.
 
-- **`check` is Docker-free.** The ephemeral tier is excluded from `check` *and* from the coverage
-  inputs, so `./gradlew build` runs anywhere. `./gradlew ephemeralTest` opts in.
-- **The system tier has no `implementation(project())` compile access to main's internals** beyond
-  what the API returns. This is not pedantry: when I first wrote it, the system test reached into
-  `QuoteRepository`, the classpath refused to compile it, and the fix was to add a read endpoint.
-  The compiler enforced the black-box boundary.
-- **No version catalog.** With one module and a BOM managing almost everything, it would add
-  indirection without removing duplication. It earns its place in a multi-module build.
+**`failOnNoDiscoveredTests`** is built into Gradle and fails a tier that discovers zero tests. It
+catches a different problem from the label typo in section 5 — it catches a tier being wired up
+incorrectly. Both are worth having.
 
-## What a peer review changed
+**`ArchitectureTest`** uses a library called ArchUnit to read the compiled code and check rules about
+how the parts of the application are allowed to depend on each other — for example, that the rate-
+lookup code never reaches into the quoting code. These are the rules that quietly erode as a project
+and a team grow.
 
-The design was reviewed by a second model. Three findings were acted on:
+---
 
-1. **The budget guard measured a capped quantity** (above). This was a real bug; the guard could
-   never have fired in the situation it existed to detect.
-2. **`check` was not Docker-free** - the coverage task pulled in the ephemeral suite. Fixed by
-   excluding its execution data.
-3. **The keystone rested on convention**, not enforcement. Fixed by `verifyTierClasspaths`.
+## 9. Decisions worth explaining
 
-Recommendations I deliberately did **not** implement in this pass, in rough priority order:
+**The default build now needs Docker, and that is a deliberate reversal.** An earlier version of
+this repository kept an in-memory database so that the ordinary build would run on any laptop with
+no setup. That sounded appealing, but it meant the default build validated against a database that
+production does not use — and worse, it constrained the migrations. Any PostgreSQL-specific feature
+would have had to be avoided so the in-memory database could also run it, which means the production
+schema was being shaped by a test database. Since a container was already required for some tests,
+keeping a Docker-free subset only meant the Docker-free subset was the one you trusted least.
 
-- **Delete the H2 tier and run slices on Testcontainers Postgres.** The strongest criticism: H2
-  in PostgreSQL mode will not execute `jsonb`, `gen_random_uuid()`, arrays or `ON CONFLICT`
-  subtleties, so the tier validates a schema production has never seen. The counter-argument is that
-  a shared container costs 2-4s once per JVM against context builds measured at 5.5s. I judged this
-  a genuine restructure rather than a fix, and left the migration-level evidence to decide it.
-- **Count contexts with a `MergedContextConfiguration`-based `TestExecutionListener`** instead of
-  parsing a log line. More robust and version-stable; the log format is an internal detail. The
-  log-parsing guard now has a canary instead, which is the cheap mitigation.
-- **A flake policy** (retry-once on the heavy tiers only, quarantine with owner and expiry,
-  skipped-ratio ceiling). At several hundred test classes this is the number one trust risk and none
-  of the current guards can see it.
-- **A per-suite minimum-count ratchet**, because "zero tests" is where a suite starts dying, not
-  where it ends up - a suite that is entirely `@Disabled` still reports a positive test count.
-- **Banning `disabledWithoutDocker = true` on CI**, where Docker being broken should be a hard
-  failure rather than a silently skipped tier.
+**The system tier cannot see the database, and that was enforced by the compiler.** When this tier
+was first written, one test reached directly into the database repository to confirm a row had been
+saved. It failed to compile, because that tier's classpath has no database library. The right fix was
+not to add the library: a "black box" test that inspects the database isn't a black box test. The fix
+was to add a read endpoint to the service, so the test could confirm the saved data through the same
+public HTTP interface a real client would use. The build enforced the design instead of a comment in
+a document enforcing it.
 
-## What is verified, and what is not
+**Shared helper code (in `src/testFixtures`) contains no Spring at all.** All four tiers compile
+against it, including the unit tier, so a single Spring type in it would have undone section 6. The
+same reasoning applies to the HTTP-stubbing library: it is a private implementation detail of the
+helper, not something exported to the tiers, so a tier that wants to use that library directly has to
+say so explicitly.
 
-Verified by running: all tiers compile; the unit tier rejects `@SpringBootTest`; the budget guard
-fails when exceeded; the classpath guard caught a real leak; context counts and timings above; a
-full `clean build` is green at 43 tests plus 3 Docker-gated.
+**There is no version catalog.** A version catalog is a file listing every library version in one
+place, which pays off in a project split into many modules. This project is one module and already
+gets its versions from a single Spring-provided list, so a catalog would add indirection without
+removing any duplication.
 
-**Not verified: the ephemeral tier has never executed.** There is no Docker on the machine this was
-built on, so `@Testcontainers(disabledWithoutDocker = true)` skipped it every time. It compiles and
-that is all that is known. Running it in CI is the first thing to do.
+---
+
+## 10. What a second opinion changed
+
+This design was reviewed by a different model before it was finished, and three of the review's
+findings were acted on:
+
+1. **The budget guard measured the wrong number**, as described in section 8. This was a real bug.
+2. **The default build was not actually Docker-free.** The coverage task was pulling in the container
+   tier, so the "no Docker needed" claim was false. Fixed by excluding it.
+3. **The rule in section 6 was only a convention**, not enforced — it worked, but only as long as
+   nobody edited a library list. Fixed by adding `verifyTierClasspaths`, which then immediately found
+   a real leak.
+4. **Run the database tests against real PostgreSQL instead of an in-memory database.** This was the
+   strongest criticism and has now been done in full: the in-memory database is gone, the persistence
+   slice runs on a PostgreSQL container, and the extra tier it created was collapsed. See section 9.
+
+Several other recommendations were deliberately **not** implemented yet, in rough priority order:
+
+- **Count app copies using a purpose-built hook** instead of reading a log line. Spring's log format
+  is an internal detail that can change between versions. The current approach has a safety net that
+  fails when the statistics disappear, which is the cheap mitigation.
+- **A data-isolation policy for the shared container.** Now that every database test shares one
+  container for the run, tests could start stepping on each other's rows. The persistence slice rolls
+  back automatically; the whole-application tests do not, and nothing enforces that yet.
+- **A policy for unreliable tests.** At several hundred test classes, tests that fail occasionally
+  are the main reason people stop trusting a suite. None of the current guards can see that.
+- **A minimum number of tests per tier**, because "zero tests" is where a tier *starts* dying. A tier
+  where every test has been switched off still reports a healthy-looking number.
+
+---
+
+## 11. What has been verified, and what hasn't
+
+**Verified by running it.** All four tiers compile. The unit tier refuses to compile a test that
+references `@SpringBootTest`. The budget guard fails when the budget is set too low. The classpath
+guard caught a real leak. All the timings and counts in this document are measured output. The full
+build is green with 43 tests and 98.2% line coverage, and the continuous integration pipeline runs
+both jobs successfully.
+
+**Previously unverified, now confirmed.** The container tier had never run, because the machine this
+was built on has no Docker. It was pushed to continuous integration specifically to settle that, and
+it passed there — the PostgreSQL container starts, the database migration runs, and the tests pass
+against the real engine.

@@ -22,8 +22,12 @@ import org.springframework.test.context.DynamicPropertySource;
 public abstract class SystemTestBase {
 
     @DynamicPropertySource
-    static void rateServiceBaseUrl(DynamicPropertyRegistry registry) {
+    static void externalDependencies(DynamicPropertyRegistry registry) {
         registry.add("app.rate.base-url", () -> RateServiceStub.baseUrl());
+        registry.add("spring.datasource.url", () -> PostgresContainer.jdbcUrl());
+        registry.add("spring.datasource.username", () -> PostgresContainer.username());
+        registry.add("spring.datasource.password", () -> PostgresContainer.password());
+        registry.add("spring.datasource.driver-class-name", () -> "org.postgresql.Driver");
     }
 
     protected static HttpEntity<String> jsonEntity(String body) {
