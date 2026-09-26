@@ -1,6 +1,7 @@
 package com.example.quotes.blackbox.support;
 
 import java.math.BigDecimal;
+import java.util.regex.Pattern;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -31,9 +32,12 @@ public final class Json {
      */
     public static void hasNumberToken(String json, String field, String expectedToken) {
         new BigDecimal(expectedToken);
+        // The token must be followed by the end of the value, so 4.25 does not match 4.2500.
+        Pattern exactToken = Pattern.compile(
+                Pattern.quote("\"" + field + "\":" + expectedToken) + "(?=[,}\\]])");
         assertThat(flatten(json))
-                .as("field '%s' should appear as the token %s", field, expectedToken)
-                .contains("\"" + field + "\":" + expectedToken);
+                .as("field '%s' should appear as exactly the token %s", field, expectedToken)
+                .containsPattern(exactToken);
     }
 
     /** Asserts a field is absent - used to prove a rejected request did not echo anything back. */

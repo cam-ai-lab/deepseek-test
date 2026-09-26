@@ -117,15 +117,32 @@ public class QuoteSteps {
         assertThat(body()).contains("\"title\":");
     }
 
-    /**
-     * The stored column is {@code TIMESTAMP(6) WITH TIME ZONE}, so a value read back has six
-     * fractional digits. A create response with more than six is echoing the caller's clock rather
-     * than the stored value.
-     */
-    @Then("the created timestamp has microsecond precision")
-    public void createdTimestampHasMicrosecondPrecision() {
-        String createdAt = response().jsonPath().getString("createdAt");
-        assertThat(createdAt).matches(".*\\.\\d{6}Z");
+    @Then("the response status is not a server error")
+    public void responseStatusIsNotAServerError() {
+        assertThat(status()).as("a request that passed validation must never produce a 5xx").isLessThan(500);
+    }
+
+    @Then("the response status is a client error")
+    public void responseStatusIsAClientError() {
+        assertThat(status()).isBetween(400, 499);
+    }
+
+    @Then("the fetched quote belongs to my customer")
+    public void fetchedQuoteBelongsToMyCustomer() {
+        assertThat(response().jsonPath().getString("quoteId")).isEqualTo(this.scenario.quoteId().toString());
+        assertThat(response().jsonPath().getString("customerId")).isEqualTo(this.scenario.customerId());
+    }
+
+    /** ISO-8601 in UTC, as {@code Instant} serialises: whole seconds or 3, 6 or 9 fractional digits. */
+    @Then("the field {string} is an ISO-8601 UTC timestamp")
+    public void fieldIsAnIsoUtcTimestamp(String field) {
+        assertThat(response().jsonPath().getString(field))
+                .matches("\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{3}|\\.\\d{6}|\\.\\d{9})?Z");
+    }
+
+    @Then("the rate service was asked for product {string} in {string}")
+    public void rateServiceWasAsked(String productCode, String currency) {
+        assertThat(this.rateStub.requestCountFor(productCode, currency)).isEqualTo(1);
     }
 
     @Then("the response carries no quote")

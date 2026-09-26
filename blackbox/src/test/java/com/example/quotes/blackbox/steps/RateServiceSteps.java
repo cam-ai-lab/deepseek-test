@@ -17,9 +17,7 @@ public class RateServiceSteps {
 
     @Given("the rate service quotes {bigdecimal}% for product {string} in {string}")
     public void quotesPercentageForProduct(BigDecimal annualPercentage, String productCode, String currency) {
-        // The currency is accepted for readability - the stub answers any currency, and asserting
-        // that the application asked for the right one is the job of a separate step.
-        this.rateStub.quotes(productCode, annualPercentage.toPlainString());
+        this.rateStub.quotes(productCode, annualPercentage.toPlainString(), currency);
     }
 
     @Given("the rate service quotes {bigdecimal} for product {string}")

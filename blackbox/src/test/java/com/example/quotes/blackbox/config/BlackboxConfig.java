@@ -12,6 +12,7 @@ import io.restassured.specification.RequestSpecification;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 
@@ -27,6 +28,9 @@ import org.springframework.jdbc.datasource.DriverManagerDataSource;
  * component. {@link CucumberSpringConfiguration} exists purely to be that pointer.
  */
 @Configuration
+// Lazy: every bean here reaches the running stack, so building them eagerly would start Docker the
+// moment the context loads - even in a dry run, which Cucumber still gives a Spring context.
+@Lazy
 @ComponentScan(basePackages = "com.example.quotes.blackbox")
 public class BlackboxConfig {
 

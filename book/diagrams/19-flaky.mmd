@@ -1,7 +1,0 @@
-stateDiagram-v2
-    [*] --> Healthy
-    Healthy --> Suspected: fails, then passes on rerun
-    Suspected --> Quarantined: confirmed flaky, ticket opened
-    Quarantined --> Healthy: root cause fixed
-    Quarantined --> Deleted: no owner after deadline
-    Suspected --> Healthy: real bug found and fixed

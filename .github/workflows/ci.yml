@@ -33,6 +33,10 @@ jobs:
         # black-box job own its own failures. The isolation guard still runs, because it belongs to
         # :blackbox:check rather than to :blackbox:test.
         run: ./gradlew check -x :blackbox:test
+      - name: Check every Cucumber step has a definition
+        # A dry run: no image, no Docker. Undefined or ambiguous steps fail here in seconds rather
+        # than after the black-box job has built and started the whole stack.
+        run: ./gradlew :blackbox:test -PdryRun -Ptags="not @wip"
       - name: Upload test and coverage reports
         if: always()
         uses: actions/upload-artifact@v7
@@ -70,11 +74,16 @@ jobs:
           docker-compose version
       - name: Run the black-box suite
         run: ./gradlew :blackbox:test
-      - name: Compose logs
+      - name: Container logs
         if: failure()
-        # Testcontainers tears the stack down, so this is best effort: it catches the case where
-        # the stack came up but a container was unhealthy when the run ended.
-        run: docker compose -f compose.blackbox.yaml logs --no-color || true
+        # Best effort: Testcontainers runs the stack under a random compose project name and removes
+        # it when the JVM exits, so `docker compose logs` would find nothing. Any compose container
+        # still present is found by the label Compose puts on it. The suite itself also prints the
+        # logs when the stack fails to start (BlackboxStack.dumpLogs).
+        run: |
+          for c in $(docker ps -a -q --filter label=com.docker.compose.service); do
+            echo "--- $(docker inspect -f '{{.Name}}' "$c")"; docker logs --tail 200 "$c" 2>&1
+          done || true
       - name: Upload reports
         if: always()
         uses: actions/upload-artifact@v7

@@ -19,7 +19,10 @@ public class Hooks {
 
     @BeforeAll
     public static void startStack() {
-        BlackboxStack.ensureStarted();
+        // Cucumber runs BeforeAll hooks even in a dry run; a dry run needs no stack (see -PdryRun).
+        if (!Boolean.getBoolean("cucumber.execution.dry-run")) {
+            BlackboxStack.ensureStarted();
+        }
     }
 
     /**

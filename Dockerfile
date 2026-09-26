@@ -10,8 +10,10 @@ WORKDIR /builder
 # The build pins this file name (see the bootJar configuration in build.gradle.kts) so the copy is
 # unambiguous - build/libs otherwise also holds the `-plain` jar.
 COPY build/libs/application.jar application.jar
-# `jarmode=tools extract --layers` unpacks the jar into dependencies / spring-boot-loader /
-# snapshot-dependencies / application, in ascending order of how often they change.
+# `jarmode=tools extract --layers` unpacks the jar into dependencies / snapshot-dependencies /
+# application, in ascending order of how often they change. Without `--launcher` the result is the
+# launcher-free layout: `application.jar` plus a `lib/` directory, started with `java -jar`. The
+# spring-boot-loader layer stays empty, so JarLauncher is NOT available in this image.
 RUN java -Djarmode=tools -jar application.jar extract --layers --destination extracted
 
 
@@ -24,7 +26,6 @@ RUN apt-get update \
 
 WORKDIR /application
 COPY --from=extract /builder/extracted/dependencies/ ./
-COPY --from=extract /builder/extracted/spring-boot-loader/ ./
 COPY --from=extract /builder/extracted/snapshot-dependencies/ ./
 COPY --from=extract /builder/extracted/application/ ./
 
@@ -37,4 +38,4 @@ EXPOSE 8080
 HEALTHCHECK --interval=2s --timeout=2s --start-period=30s --retries=30 \
     CMD curl -fsS http://localhost:8080/actuator/health/readiness || exit 1
 
-ENTRYPOINT ["java", "org.springframework.boot.loader.launch.JarLauncher"]
+ENTRYPOINT ["java", "-jar", "application.jar"]

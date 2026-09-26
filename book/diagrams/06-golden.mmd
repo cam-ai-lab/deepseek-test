@@ -1,9 +1,0 @@
-flowchart LR
-    I["Known input<br/>(golden command)"] --> SUT["System under test"]
-    SUT --> O["Actual output"]
-    O --> N["Normalise<br/>(blank ids, timestamps)"]
-    G[("Golden file<br/>approved output")] --> N2["Normalise"]
-    N --> CMP{"Equal?"}
-    N2 --> CMP
-    CMP -- yes --> P["Pass"]
-    CMP -- no --> R["Human review:<br/>bug, or intended change?"]

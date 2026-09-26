@@ -61,12 +61,27 @@ public final class BlackboxStack {
         if (stack != null) {
             return;
         }
-        String composeFile = System.getProperty("blackbox.composeFile");
-        if (composeFile == null) {
-            throw new IllegalStateException(
-                    "System property 'blackbox.composeFile' is not set. It is set by blackbox/build.gradle.kts.");
+        start(composeFile());
+    }
+
+    /**
+     * The compose file: the {@code blackbox.composeFile} system property when the build sets it (the
+     * Cucumber task does), otherwise the first {@code compose.blackbox.yaml} found walking up from the
+     * working directory (the Gatling run, or an IDE).
+     */
+    private static File composeFile() {
+        String configured = System.getProperty("blackbox.composeFile");
+        if (configured != null) {
+            return new File(configured);
         }
-        start(new File(composeFile));
+        for (File dir = new File(System.getProperty("user.dir")).getAbsoluteFile(); dir != null; dir = dir.getParentFile()) {
+            File candidate = new File(dir, "compose.blackbox.yaml");
+            if (candidate.isFile()) {
+                return candidate;
+            }
+        }
+        throw new IllegalStateException("Cannot find compose.blackbox.yaml: set the system property "
+                + "'blackbox.composeFile' or run from inside the repository.");
     }
 
     @SuppressWarnings({"rawtypes", "unchecked"})
@@ -98,7 +113,7 @@ public final class BlackboxStack {
             container.start();
         }
         catch (RuntimeException ex) {
-            dumpLogs(composeFile);
+            dumpLogs();
             throw ex;
         }
         stack = container;
@@ -106,33 +121,52 @@ public final class BlackboxStack {
     }
 
     /**
-     * Prints the compose logs when the stack fails to come up.
+     * Prints every compose service's logs when the stack fails to come up.
      *
      * <p>Without this the failure is "container not running" plus a teardown, which tells you
-     * nothing about why - Testcontainers removes the evidence. The application's own exception is
-     * almost always the answer.
+     * nothing about why. The application's own exception is almost always the answer.
+     *
+     * <p>{@code docker compose logs} cannot be used here: Testcontainers runs the stack under a random
+     * project name, so a plain {@code docker compose -f ... logs} looks at a project that does not
+     * exist and prints nothing. Instead, find the containers by the service label Compose puts on
+     * every container it creates, including ones that have already exited.
      */
-    private static void dumpLogs(File composeFile) {
-        System.out.println("--- docker compose logs (the stack did not come up) ---");
+    private static void dumpLogs() {
+        System.out.println("--- container logs (the stack did not come up) ---");
+        for (String service : new String[] {APP, WIREMOCK, POSTGRES}) {
+            String ids = run("docker", "ps", "-a", "-q", "--filter", "label=com.docker.compose.service=" + service);
+            if (ids.startsWith(RUN_FAILED)) {
+                System.out.println(ids);
+                break;
+            }
+            for (String container : ids.split("\\s+")) {
+                if (!container.isBlank()) {
+                    System.out.println("--- " + service + " (" + container + ") ---");
+                    System.out.println(run("docker", "logs", "--tail", "200", container));
+                }
+            }
+        }
+        System.out.println("--- end of container logs ---");
+    }
+
+    private static final String RUN_FAILED = "could not run ";
+
+    private static String run(String... command) {
         try {
-            Process process = new ProcessBuilder(
-                    "docker", "compose", "-f", composeFile.getAbsolutePath(),
-                    "logs", "--no-color", "--tail", "200")
-                    .redirectErrorStream(true)
-                    .start();
-            process.getInputStream().transferTo(System.out);
+            Process process = new ProcessBuilder(command).redirectErrorStream(true).start();
+            String output = new String(process.getInputStream().readAllBytes());
             if (!process.waitFor(30, TimeUnit.SECONDS)) {
                 process.destroyForcibly();
-                System.out.println("--- docker compose logs timed out ---");
             }
+            return output;
         }
         catch (InterruptedException ex) {
             Thread.currentThread().interrupt();
+            return "";
         }
         catch (Exception ex) {
-            System.out.println("Could not collect compose logs: " + ex);
+            return RUN_FAILED + String.join(" ", command) + ": " + ex;
         }
-        System.out.println("--- end of compose logs ---");
     }
 
     private static void log(OutputFrame frame) {

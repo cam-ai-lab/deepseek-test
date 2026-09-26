@@ -1,8 +1,0 @@
-flowchart TB
-    CFG["BlackboxConfig<br/>@CucumberContextConfiguration"] --> CTX["Small Spring context<br/>(test beans only)"]
-    CTX --> B1["RequestSpecification"]
-    CTX --> B2["WireMock client"]
-    CTX --> B3["JdbcTemplate (reader)"]
-    CTX --> B4["ScenarioContext<br/>@ScenarioScope"]
-    B1 & B2 & B3 & B4 -->|"@Autowired"| ST["Step classes"]
-    NOT["The application's own context"] -. "never loaded here" .-> CTX

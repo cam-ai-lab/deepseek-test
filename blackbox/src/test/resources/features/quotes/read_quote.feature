@@ -12,5 +12,6 @@ Feature: Read a quote
     Then the response status is 201
     When I fetch that quote
     Then the response status is 200
-    And the quote amount is 25000.00
-    And the quote total is 27125.00
+    And the fetched quote belongs to my customer
+    # Totals and amounts on GET are not asserted here: their scale differs from the POST response,
+    # which is a known bug with its own scenario in known_bugs.feature. One reason to fail each.

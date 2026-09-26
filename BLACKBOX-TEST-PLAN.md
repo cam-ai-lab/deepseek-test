@@ -329,7 +329,7 @@ can't see it. That independence is what catches contract drift.
 | Job | Command | Uploads |
 | --- | --- | --- |
 | `unit-and-integration` | `./gradlew check -x :blackbox:test` | test + JaCoCo reports |
-| `blackbox` | `./gradlew :blackbox:test` | Cucumber HTML report, `docker compose logs` on failure |
+| `blackbox` | `./gradlew :blackbox:test` | Cucumber HTML report, container logs printed by `BlackboxStack` when the stack fails to start |
 
 A separate `perf-smoke.yml` runs `./gradlew :blackbox:gatlingRun` nightly and on
 `workflow_dispatch`, and uploads the Gatling report.

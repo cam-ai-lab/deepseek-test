@@ -11,6 +11,9 @@
 
 plugins {
     java
+    // Adds the `gatling` source set (src/gatling/java) and the `gatlingRun` task for the nightly
+    // performance smoke test. It shares BlackboxStack with the Cucumber suite.
+    id("io.gatling.gradle") version "3.15.1.3"
 }
 
 java {
@@ -69,11 +72,19 @@ dependencies {
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
+// `-PdryRun` matches every step to its definition without executing anything: no image, no Docker.
+// Undefined or ambiguous steps still fail, so it is a fast check that the features and the glue agree.
+val cucumberDryRun = providers.gradleProperty("dryRun").map { it != "false" }.getOrElse(false)
+
 tasks.test {
     useJUnitPlatform()
     failOnNoDiscoveredTests = true
-    // The image must exist before the stack can be composed from it.
-    dependsOn(":dockerImage")
+    if (cucumberDryRun) {
+        systemProperty("cucumber.execution.dry-run", "true")
+    } else {
+        // The image must exist before the stack can be composed from it.
+        dependsOn(":dockerImage")
+    }
 
     // `@wip` is for work in progress; `@known-bug` documents behaviour that is deliberately not
     // fixed yet. Both are excluded by default and both should be visible in review.
@@ -91,6 +102,16 @@ tasks.test {
         exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
         showStandardStreams = true
     }
+}
+
+// The performance smoke test runs against the same image and stack as the Cucumber suite. It is a
+// nightly job, not a merge gate: latency on shared CI runners is too noisy to block on.
+dependencies {
+    gatlingImplementation("org.wiremock:wiremock:$wiremockVersion")
+}
+
+tasks.named("gatlingRun") {
+    dependsOn(":dockerImage")
 }
 
 // The suite's entire value is that it cannot see the application's code. That independence is easy

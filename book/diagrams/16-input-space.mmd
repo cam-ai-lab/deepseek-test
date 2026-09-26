@@ -1,6 +1,0 @@
-flowchart TB
-    ALL["Every possible request"] --> V["Passes validation"]
-    ALL --> I["Rejected with 400"]
-    V --> T["Tested by example scenarios<br/>(a handful of points)"]
-    V --> U["Never tried by a human<br/>(most of the space)"]
-    U --> B["Where the overflow 500 lives:<br/>amount 999999999999999.9999"]

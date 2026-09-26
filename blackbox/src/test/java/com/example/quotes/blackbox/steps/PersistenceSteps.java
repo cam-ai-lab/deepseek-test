@@ -49,7 +49,7 @@ public class PersistenceSteps {
         assertThat(this.quoteDb.countFor(this.scenario.customerId())).isZero();
     }
 
-    @Then("{int} quote(s) are stored for my customer")
+    @Then("{int} quote(s) is/are stored for my customer")
     public void quotesAreStoredForMyCustomer(int expected) {
         assertThat(this.quoteDb.countFor(this.scenario.customerId())).isEqualTo(expected);
     }

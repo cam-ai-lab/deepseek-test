@@ -9,9 +9,10 @@ Feature: The HTTP contract
     When I request a quote for 10000.00 USD over 12 months of product "WIDGET"
     Then the response status is 201
     And the response has exactly the documented fields
-    And the quote amount is 10000.00
-    And the quote rate is 4.25
-    And the quote total is 10425.00
+    And the quote amount is "10000.00"
+    And the quote rate is "4.25"
+    And the quote total is "10425.00"
+    And the field "createdAt" is an ISO-8601 UTC timestamp
 
   Scenario: An unknown quote reports a problem document, not an empty body
     When I fetch a quote that does not exist
