@@ -22,7 +22,7 @@ repositories {
 }
 
 val springBootBom = "org.springframework.boot:spring-boot-dependencies:4.1.1"
-val wiremock = "org.wiremock:wiremock-standalone:3.13.1"
+val wiremock = "org.wiremock:wiremock-standalone:3.13.2"
 val archunit = "com.tngtech.archunit:archunit:1.5.1"
 val testcontainersPostgres = "org.testcontainers:testcontainers-postgresql"
 
