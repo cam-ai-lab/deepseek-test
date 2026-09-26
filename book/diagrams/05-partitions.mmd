@@ -1,0 +1,6 @@
+flowchart LR
+    subgraph T["termMonths input space"]
+      direction LR
+      a["≤ 0<br/>invalid"] --- b["1 … 600<br/>valid"] --- c["≥ 601<br/>invalid"]
+    end
+    b -.boundaries.-> bb["test 0, 1, 600, 601"]

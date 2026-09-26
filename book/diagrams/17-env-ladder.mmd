@@ -1,0 +1,6 @@
+flowchart TB
+    E1["In-process<br/>JVM only, milliseconds"] --> E2["Containers on the build machine<br/>Testcontainers / compose, seconds"]
+    E2 --> E3["Ephemeral environment<br/>deployed per PR, minutes, then destroyed"]
+    E3 --> E4["Staging<br/>long-lived, shared, production-like"]
+    E4 --> E5["Production<br/>smoke tests, synthetic monitoring"]
+    E1 -. "more realism, less speed, less control ↓" .-> E5

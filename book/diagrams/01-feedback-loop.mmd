@@ -1,0 +1,7 @@
+flowchart LR
+    A["Change the code"] --> B["Run the tests"]
+    B --> C{"Green?"}
+    C -- yes --> D["Ship with confidence"]
+    C -- no --> E["Read the failure"]
+    E --> A
+    D -. "next change" .-> A

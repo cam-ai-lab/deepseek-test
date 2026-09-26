@@ -1,0 +1,13 @@
+flowchart TB
+    subgraph FULL["@SpringBootTest: everything"]
+      direction LR
+      f1["Controllers"] --- f2["Services"] --- f3["Repositories"] --- f4["HTTP clients"] --- f5["DataSource + Flyway"]
+    end
+    subgraph WEB["@WebMvcTest: web layer only"]
+      direction LR
+      w1["Controllers"] --- w2["Advice, JSON, validation"] --- w3["@MockitoBean QuoteService"]
+    end
+    subgraph JPA["@DataJpaTest: persistence only"]
+      direction LR
+      j1["Repositories"] --- j2["DataSource + Flyway"] --- j3["Transaction per test"]
+    end
