@@ -5,6 +5,7 @@ import java.time.Duration;
 
 import org.testcontainers.containers.DockerComposeContainer;
 import org.testcontainers.containers.output.OutputFrame;
+import org.testcontainers.containers.wait.strategy.Wait;
 
 /**
  * Starts the real service, its database and its stubbed upstream through {@code docker compose}, and
@@ -71,12 +72,20 @@ public final class BlackboxStack {
     private static void start(File composeFile) {
         DockerComposeContainer container = new DockerComposeContainer(composeFile);
         // Each call is a statement rather than a chain, for the raw-type reason above.
-        container.withExposedService(APP, APP_PORT);
-        container.withExposedService(WIREMOCK, WIREMOCK_PORT);
+        //
+        // The wait strategy is supplied per service rather than via `withOptions("--wait")`:
+        // Testcontainers builds the command as `docker compose <options> up -d`, and `--wait` is an
+        // option of `up` rather than a global one, so it produced `--wait up -d` and compose
+        // rejected the command outright.
+        container.withExposedService(APP, APP_PORT,
+                Wait.forHttp("/actuator/health/readiness")
+                        .forStatusCode(200)
+                        .withStartupTimeout(Duration.ofMinutes(3)));
+        container.withExposedService(WIREMOCK, WIREMOCK_PORT,
+                Wait.forHttp("/__admin/health").forStatusCode(200));
+        // Postgres needs no HTTP check: the application will not start until it is healthy, and the
+        // app's readiness is what is actually waited on above.
         container.withExposedService(POSTGRES, POSTGRES_PORT);
-        // `--wait` makes compose hold until every healthcheck passes. The healthchecks are in the
-        // compose file, so all three services declare what "ready" means for them.
-        container.withOptions("--wait");
         container.withRemoveVolumes(true);
         container.withStartupTimeout(Duration.ofMinutes(5));
         // Pipe container output into the build log. When a scenario fails, the application's own
