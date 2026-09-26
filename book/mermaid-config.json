@@ -1,0 +1,13 @@
+{
+  "theme": "neutral",
+  "themeVariables": {
+    "fontSize": "18px",
+    "fontFamily": "Helvetica, Arial, sans-serif",
+    "primaryColor": "#ffffff",
+    "primaryBorderColor": "#222222",
+    "lineColor": "#222222",
+    "textColor": "#111111"
+  },
+  "flowchart": { "curve": "basis", "padding": 12 },
+  "sequence": { "mirrorActors": false }
+}

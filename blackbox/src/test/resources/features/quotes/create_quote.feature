@@ -11,7 +11,7 @@ Feature: Create a quote
     Then the response status is 201
     And the response has a Location header pointing at the new quote
     And the quote total is 10425.00
-    And exactly one quote is stored for my customer
+    And 1 quote is stored for my customer
     And the stored quote has total 10425.0000 and rate 4.2500
     And the stored quote is for 12 months
 
@@ -33,9 +33,8 @@ Feature: Create a quote
     Then the response status is 201
     And the quote rate is 4.25
 
-  Scenario: Every quote gets its own identity
+  Scenario: Two commands create two separate quotes
     When I request a quote for 50.00 USD over 1 month of product "WIDGET"
     And I request a quote for 50.00 USD over 1 month of product "WIDGET"
     Then the response status is 201
-    And I fetch that quote
-    Then the response status is 200
+    And 2 quotes are stored for my customer

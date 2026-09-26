@@ -1,0 +1,33 @@
+/* Designed for e-ink and small screens: no meaning carried by colour alone,
+   borders and labels instead of tinted backgrounds, generous line height. */
+body { font-family: Georgia, "Times New Roman", serif; line-height: 1.5; margin: 0 0.4em; }
+h1 { font-family: Helvetica, Arial, sans-serif; font-size: 1.6em; margin: 1.2em 0 0.6em; page-break-before: always; }
+h2 { font-family: Helvetica, Arial, sans-serif; font-size: 1.25em; margin: 1.4em 0 0.4em; border-bottom: 1px solid #000; }
+h3 { font-family: Helvetica, Arial, sans-serif; font-size: 1.05em; margin: 1.2em 0 0.3em; }
+p { margin: 0.5em 0; }
+code { font-family: Menlo, Consolas, "Courier New", monospace; font-size: 0.88em; }
+pre { font-family: Menlo, Consolas, "Courier New", monospace; font-size: 0.78em; line-height: 1.35;
+      border: 1px solid #000; border-left: 4px solid #000; padding: 0.5em; margin: 0.8em 0;
+      white-space: pre-wrap; word-wrap: break-word; }
+pre code { font-size: 1em; }
+figure { margin: 1em 0; text-align: center; page-break-inside: avoid; }
+figure img, p img { max-width: 100%; height: auto; }
+figcaption { font-family: Helvetica, Arial, sans-serif; font-size: 0.85em; font-style: italic; margin-top: 0.3em; }
+table { border-collapse: collapse; margin: 0.8em 0; font-size: 0.85em; width: 100%; }
+th, td { border: 1px solid #000; padding: 0.3em 0.4em; vertical-align: top; text-align: left; }
+th { font-family: Helvetica, Arial, sans-serif; font-weight: bold; border-bottom: 2px solid #000; }
+blockquote { margin: 0.8em 1em; font-style: italic; }
+
+/* Callouts. The label is real text inside the box, so it survives any reader or font. */
+div.callout { border: 2px solid #000; padding: 0.4em 0.7em; margin: 1em 0; page-break-inside: avoid; }
+div.callout > p:first-child { font-family: Helvetica, Arial, sans-serif; font-weight: bold;
+      text-transform: uppercase; letter-spacing: 0.05em; font-size: 0.85em; margin-top: 0.2em; }
+div.mental { border-style: solid; }
+div.myth { border-style: double; border-width: 4px; }
+div.tryit { border-style: dashed; }
+div.hood { border-style: dotted; border-width: 3px; }
+div.recall { border-left: 6px solid #000; border-top: 1px solid #000; border-right: 1px solid #000; border-bottom: 1px solid #000; }
+div.covers { border-top: 3px solid #000; border-bottom: 3px solid #000; border-left: none; border-right: none; }
+div.quiz { border: 2px solid #000; border-left: 8px solid #000; }
+div.summary { border-top: 3px double #000; border-bottom: 3px double #000; border-left: none; border-right: none; }
+.annotations { font-size: 0.85em; margin-left: 1em; }

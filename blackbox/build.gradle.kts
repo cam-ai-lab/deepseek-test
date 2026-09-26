@@ -54,8 +54,11 @@ dependencies {
     testImplementation("org.springframework:spring-jdbc:$springVersion")
 
     testImplementation("io.rest-assured:rest-assured:$restAssuredVersion")
-    // REST-assured needs a JSON serialiser present to send a Map as a request body.
+    // REST-assured needs a JSON serialiser present to send a Map as a request body, and Cucumber's
+    // HTML report formatter needs Jackson 2 *including* the jdk8 module - it fails the whole run with
+    // "Cucumber needs a JSON library to write reports" if only databind is present.
     testImplementation("com.fasterxml.jackson.core:jackson-databind:$jacksonVersion")
+    testImplementation("com.fasterxml.jackson.datatype:jackson-datatype-jdk8:$jacksonVersion")
     // The admin client only; the WireMock server itself runs as a container.
     testImplementation("org.wiremock:wiremock:$wiremockVersion")
     testImplementation("org.assertj:assertj-core:$assertjVersion")
