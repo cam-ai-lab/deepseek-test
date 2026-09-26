@@ -8,26 +8,16 @@ JSON. That independence is what lets it catch a contract change rather than inhe
 ## Running it
 
 ```bash
-./gradlew :blackbox:test                 # build the image, start the stack, run everything
-./gradlew :blackbox:test -Ptags=@wip     # only work-in-progress scenarios
-./gradlew :blackbox:test -Ptags=@known-bug
+./gradlew :blackbox:test                    # build the image, start the stack, run everything
+./gradlew :blackbox:test -PdryRun           # check every step has a definition; no Docker needed
+./gradlew :blackbox:test -Ptags=@wip        # only work-in-progress scenarios
+./gradlew :blackbox:test -Ptags=@known-bug  # the defects below; these FAIL until fixed
+./gradlew :blackbox:gatlingRun              # performance smoke test (nightly in CI)
 ```
 
-Needs Docker, with **a `docker-compose` executable on `PATH`**. Testcontainers' local compose mode
-shells out to that exact name. Docker Desktop and OrbStack provide it; if you have only the Compose v2
-plugin (`docker compose`) then `Local Docker Compose not found. Is docker-compose on the PATH?` is the
-error you will get, and the fix is a one-line shim:
-
-```sh
-sudo tee /usr/local/bin/docker-compose >/dev/null <<'SH'
-#!/bin/sh
-exec docker compose "$@"
-SH
-sudo chmod +x /usr/local/bin/docker-compose
-```
-
-The CI workflows do exactly this. The stack takes roughly 30–60 s to come up; the scenarios
-themselves are fast.
+Needs Docker. Testcontainers' `ComposeContainer` runs `docker compose` in a helper container, so no
+`docker-compose` binary is required on the host. The stack takes roughly 30–60 s to come up; the
+scenarios themselves are fast.
 
 Note the explicit `:blackbox:` prefix. Plain `./gradlew test` runs *every* project's `test` task,
 which includes this one and therefore needs Docker. The in-process tiers are `./gradlew :test` and
@@ -41,7 +31,7 @@ Reports: `blackbox/build/reports/cucumber/index.html`.
 | --- | --- |
 | *(none)* | Runs by default |
 | `@wip` | Work in progress. Excluded by default; should be temporary and visible in review |
-| `@known-bug` | Documents a real defect that is deliberately not fixed yet. Excluded by default |
+| `@known-bug` | A real defect, written as the **correct** behaviour, so it fails until fixed. Excluded by default; delete the tag when it passes. Never rewrite one to assert the bug |
 
 ## The step vocabulary
 
@@ -73,23 +63,28 @@ When I fetch a quote that does not exist
 ```gherkin
 Then the response status is 201
 Then the response has a Location header pointing at the new quote
-Then the quote total is 10425.00
-Then the quote amount is 10000.00
-Then the quote rate is 4.25
+Then the quote total is "10425.00"
+Then the quote amount is "10000.00"
+Then the quote rate is "4.25"
 Then the response has exactly the documented fields
 Then the fetched JSON equals the created JSON
 Then the response is a problem of type "urn:problem:rate-unavailable" with status 503
 Then the response carries no quote
 Then the rate service was never asked for product "WIDGET"
-Then the created timestamp has microsecond precision
+Then the rate service was asked for product "WIDGET" in "USD"
+Then the fetched quote belongs to my customer
+Then the field "createdAt" is an ISO-8601 UTC timestamp
+Then the response status is not a server error
+Then the response status is a client error
 ```
 
 ### Then — what reached the database
 
 ```gherkin
 Then no quote is stored for my customer
-Then exactly one quote is stored for my customer
-Then the stored quote has total 10425.0000 and rate 4.2500
+Then 1 quote is stored for my customer
+Then 2 quotes are stored for my customer
+Then the stored quote has total "10425.0000" and rate "4.2500"
 Then the stored quote is for 12 months
 ```
 
@@ -118,7 +113,7 @@ and enable `cucumber.execution.parallel.enabled`.
 ```
 src/main/java/.../stack/BlackboxStack.java    the compose stack, shared with Gatling
 src/test/java/.../RunCucumberTest.java        the JUnit Platform entry point
-src/test/java/.../config/BlackboxConfig.java  DI for the steps - a plain Spring context
+src/test/java/.../config/                     DI for the steps - a plain Spring context, never the app's
 src/test/java/.../support/                    ScenarioContext, QuoteDb, RateStub, Json
 src/test/java/.../steps/                      the vocabulary above
 src/test/resources/features/                  the scenarios
