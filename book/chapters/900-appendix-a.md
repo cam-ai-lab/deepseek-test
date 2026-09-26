@@ -62,7 +62,7 @@ image. Later runs reuse all of them.
 
 ```bash
 docker compose up -d                 # PostgreSQL on localhost:5432
-docker run -d -p 8081:8080 wiremock/wiremock:3.13.1    # a stand-in rate service
+docker run -d -p 8081:8080 wiremock/wiremock:3.13.2    # a stand-in rate service
 curl -X POST localhost:8081/__admin/mappings \
   -d '{"request":{"urlPath":"/rates/WIDGET"},
        "response":{"status":200,"jsonBody":{"annualPercentage":4.25}}}'

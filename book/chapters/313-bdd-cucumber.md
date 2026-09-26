@@ -329,7 +329,7 @@ and bury the behaviour. Prefer declarative steps: *"When I request a quote for 1
 active"* as one step. It can't be reused and hides three preconditions. Split it.
 
 **Step explosion.** Twenty slightly different phrasings of "the status is 201". Keep a small,
-reviewed **step vocabulary** (the plan puts it in `blackbox/README.md`) and grow it deliberately.
+reviewed **step vocabulary** (the lab keeps it in `blackbox/README.md`) and grow it deliberately.
 
 **Logic in feature files.** Loops, conditionals or computed values in Gherkin. Features describe
 examples; logic belongs in step code.

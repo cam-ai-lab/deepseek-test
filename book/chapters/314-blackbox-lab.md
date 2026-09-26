@@ -48,15 +48,17 @@ FROM eclipse-temurin:21-jre
 RUN apt-get update \
     && apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/*                                                       # 3
+RUN useradd --system --uid 10001 --no-create-home app
 WORKDIR /application
 COPY --from=extract /builder/extracted/dependencies/ ./                                  # 4
 COPY --from=extract /builder/extracted/snapshot-dependencies/ ./
 COPY --from=extract /builder/extracted/application/ ./
 ENV JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=75"
+USER app                                                                                 # 5
 EXPOSE 8080
 HEALTHCHECK --interval=2s --timeout=2s --start-period=30s --retries=30 \
     CMD curl -fsS http://localhost:8080/actuator/health/readiness || exit 1
-ENTRYPOINT ["java", "-jar", "application.jar"]                                           # 5
+ENTRYPOINT ["java", "-jar", "application.jar"]                                           # 6
 ```
 
 ::: {.annotations}
@@ -66,7 +68,9 @@ ENTRYPOINT ["java", "-jar", "application.jar"]                                  
    every commit.
 3. The health checks call `curl`, which the JRE base image doesn't include.
 4. Copy the rarely changing layers first, so Docker's cache reuses them and rebuilds only the last.
-5. `java -jar`, *not* Spring Boot's `JarLauncher`. See the box below — this line is the story of the
+5. Run as an unprivileged user. A test image should be as close to the production image as possible,
+   and production images shouldn't run as root.
+6. `java -jar`, *not* Spring Boot's `JarLauncher`. See the box below — this line is the story of the
    suite's first failed CI run.
 :::
 
@@ -148,7 +152,7 @@ services:
       retries: 30
 
   wiremock:
-    image: wiremock/wiremock:3.13.1                                   # 3
+    image: wiremock/wiremock:3.13.2                                   # 3
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8080/__admin/health"]
       interval: 2s
@@ -362,7 +366,7 @@ dependencies {
     testImplementation("org.springframework:spring-test:$springVersion")
     testImplementation("org.springframework:spring-jdbc:$springVersion")
     testImplementation("io.rest-assured:rest-assured:5.5.6")
-    testImplementation("org.wiremock:wiremock:3.13.1")                        // admin client only
+    testImplementation("org.wiremock:wiremock:3.13.2")                        // admin client only
     testImplementation("org.assertj:assertj-core:3.27.7")
     testRuntimeOnly("org.postgresql:postgresql:42.7.13")
     // Deliberately NO project(":") dependency.                               // #3
