@@ -1,0 +1,17 @@
+flowchart LR
+    subgraph WB["White-box"]
+      direction TB
+      w1["Test sees and calls the internals"]
+      w2["Example: QuoteCalculatorTest"]
+    end
+    subgraph GB["Grey-box"]
+      direction TB
+      g1["Drives the public interface,<br/>but knows or peeks inside"]
+      g2["Example: HTTP call +<br/>read-only SQL check"]
+    end
+    subgraph BB["Black-box"]
+      direction TB
+      b1["Only the public interface,<br/>no shared code"]
+      b2["Example: Cucumber against<br/>the Docker image"]
+    end
+    WB --> GB --> BB

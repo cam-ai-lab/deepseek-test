@@ -1,0 +1,13 @@
+flowchart TB
+    subgraph E2E["End to end: several deployed systems together"]
+      subgraph SYS["System: one whole deployable, dependencies stubbed"]
+        subgraph INT["Integration: a few real parts wired together"]
+          subgraph UNIT["Unit: one class or function"]
+            U["QuoteCalculator"]
+          end
+          J["QuoteRepository + PostgreSQL"]
+        end
+        W["Whole quotes service over HTTP"]
+      end
+      O["Quotes + real rate service + gateway + UI"]
+    end

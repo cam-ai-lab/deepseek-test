@@ -6,7 +6,6 @@ import com.example.quotes.blackbox.stack.BlackboxStack;
 import com.example.quotes.blackbox.support.QuoteDb;
 import com.example.quotes.blackbox.support.RateStub;
 import com.github.tomakehurst.wiremock.client.WireMock;
-import io.cucumber.spring.CucumberContextConfiguration;
 import io.restassured.builder.RequestSpecBuilder;
 import io.restassured.http.ContentType;
 import io.restassured.specification.RequestSpecification;
@@ -15,7 +14,6 @@ import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
-import org.springframework.test.context.ContextConfiguration;
 
 /**
  * Dependency injection for the step classes.
@@ -24,13 +22,12 @@ import org.springframework.test.context.ContextConfiguration;
  * is emphatically <em>not</em> the application's context. Nothing here imports a class from the
  * service; the endpoints, the database and the stub are all reached over the network.
  *
- * <p>{@code @CucumberContextConfiguration} is what tells Cucumber to build this context once per
- * run and inject from it.
+ * <p>Note there is no {@code @CucumberContextConfiguration} here, deliberately: this class is a
+ * Spring {@code @Configuration}, and cucumber-spring rejects a glue class that is also a Spring
+ * component. {@link CucumberSpringConfiguration} exists purely to be that pointer.
  */
 @Configuration
 @ComponentScan(basePackages = "com.example.quotes.blackbox")
-@CucumberContextConfiguration
-@ContextConfiguration(classes = BlackboxConfig.class)
 public class BlackboxConfig {
 
     @Bean

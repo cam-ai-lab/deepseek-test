@@ -1,0 +1,7 @@
+flowchart LR
+    subgraph Ours["Our code"]
+      S["QuoteService"] --> P["RateGateway<br/>(port: our language)"]
+      P -.-> A["HttpRateGateway<br/>(adapter: their language)"]
+    end
+    A -->|"JSON over HTTP"| R["Rate service"]
+    A -. "timeouts, 4xx, 5xx,<br/>bad JSON" .-> E["RateUnavailableException"]

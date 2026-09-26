@@ -1,0 +1,11 @@
+flowchart TB
+    subgraph L1["Level 1: in-memory, replace the Java interface"]
+      S1["QuoteService"] --> F1["StubRateGateway or Mockito mock"]
+    end
+    subgraph L2["Level 2: replace the network peer"]
+      S2["QuoteService"] --> H2["HttpRateGateway (real)"] -->|"real HTTP"| W2["WireMock server"]
+    end
+    subgraph L3["Level 3: replace nothing in the app"]
+      S3["Docker image of the app"] -->|"real HTTP"| W3["WireMock container"]
+    end
+    L1 --> L2 --> L3

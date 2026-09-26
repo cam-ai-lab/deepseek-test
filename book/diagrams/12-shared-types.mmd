@@ -1,0 +1,6 @@
+flowchart LR
+    subgraph JVM["One JVM"]
+      App["App serialises<br/>QuoteResponse to JSON"] -->|"JSON"| Test["Test deserialises JSON<br/>back into QuoteResponse"]
+    end
+    Test --> Q["assert total<br/>isEqualByComparingTo 10500"]
+    Q --> Blind["10500.00 vs 10500.0000?<br/>Both pass. The wire difference is invisible."]

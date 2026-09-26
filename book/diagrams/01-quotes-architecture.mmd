@@ -1,0 +1,11 @@
+flowchart TB
+    Client(["HTTP client"]) -->|"POST /api/v1/quotes"| C["QuoteController"]
+    Client -->|"GET /api/v1/quotes/{id}"| C
+    C --> S["QuoteService"]
+    S -->|"1. rateFor(product, currency)"| G["RateGateway (port)"]
+    G -.implemented by.-> H["HttpRateGateway"]
+    H -->|"HTTP GET /rates/{product}"| R[("Rate service<br/>(another team)")]
+    S -->|"2. totalFor(...)"| K["QuoteCalculator<br/>(pure arithmetic)"]
+    S -->|"3. save(quote)"| Repo["QuoteRepository<br/>(Spring Data JPA)"]
+    Repo --> DB[("PostgreSQL<br/>schema by Flyway")]
+    C -. "errors" .-> X["ApiExceptionHandler<br/>(RFC 9457 problems)"]

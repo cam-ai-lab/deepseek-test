@@ -1,0 +1,7 @@
+flowchart LR
+    web["web"] -->|"allowed"| quote["quote"]
+    web -->|"allowed"| rate["rate"]
+    quote -->|"allowed"| rate
+    rate -. "FORBIDDEN" .-> quote
+    rate -. "FORBIDDEN" .-> web
+    quote -. "FORBIDDEN" .-> web
