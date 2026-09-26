@@ -14,8 +14,10 @@ permissions:
   contents: read
 
 jobs:
-  build:
-    name: Build and test
+  # The in-process tiers: unit and integration. Integration starts a PostgreSQL container, so this
+  # job needs Docker but not the application image.
+  unit-and-integration:
+    name: Unit and integration
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -27,16 +29,46 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
       - name: Build and test
-        # One job, every tier. The database tests start their own PostgreSQL container via
-        # Testcontainers; the GitHub runner already has a working Docker daemon, so there is no
-        # separate container job and no Docker-free subset to keep in step.
-        run: ./gradlew build
+        # `check` includes the black-box suite; excluding it here keeps this job fast and lets the
+        # black-box job own its own failures. The isolation guard still runs, because it belongs to
+        # :blackbox:check rather than to :blackbox:test.
+        run: ./gradlew check -x :blackbox:test
       - name: Upload test and coverage reports
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: reports
+          name: unit-and-integration-reports
           path: |
             build/reports/tests/
             build/reports/jacoco/
+          if-no-files-found: ignore
+
+  # The black-box suite: builds the real image, stands up the compose stack, talks HTTP.
+  blackbox:
+    name: Black box
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Set up JDK 21
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+      - name: Run the black-box suite
+        run: ./gradlew :blackbox:test
+      - name: Compose logs
+        if: failure()
+        # Testcontainers tears the stack down, so this is best effort: it catches the case where
+        # the stack came up but a container was unhealthy when the run ended.
+        run: docker compose -f compose.blackbox.yaml logs --no-color || true
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: blackbox-reports
+          path: |
+            blackbox/build/reports/cucumber/
+            blackbox/build/test-results/
           if-no-files-found: ignore

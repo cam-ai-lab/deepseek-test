@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.Optional;
 import java.util.UUID;
 
 import com.example.quotes.rate.Rate;
@@ -97,6 +98,33 @@ class QuoteServiceTest {
         service.createQuote(new QuoteRequest("cust-9", "GIZMO", new BigDecimal("500.00"), "EUR", 3));
 
         then(rateGateway).should().rateFor("GIZMO", "EUR");
+    }
+
+    @Test
+    void reads_back_a_stored_quote_by_id() {
+        UUID id = UUID.randomUUID();
+        Quote stored = QuoteTestData.quote(id, "cust-1", "WIDGET", "10000.00", "USD", 12, "4.2500",
+                "10425.00");
+        given(repository.findById(id)).willReturn(Optional.of(stored));
+
+        QuoteResponse response = service.findQuote(id);
+
+        assertThat(response.quoteId()).isEqualTo(id);
+        assertThat(response.customerId()).isEqualTo("cust-1");
+        assertThat(response.total()).isEqualByComparingTo("10425.00");
+        assertThat(response.createdAt()).isEqualTo(QuoteTestData.FROZEN_NOW);
+    }
+
+    @Test
+    void reports_a_missing_quote_as_not_found() {
+        UUID id = UUID.randomUUID();
+        given(repository.findById(id)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.findQuote(id))
+                .isInstanceOf(QuoteNotFoundException.class)
+                .hasMessageContaining(id.toString());
+
+        then(rateGateway).shouldHaveNoInteractions();
     }
 
     @Test

@@ -1,0 +1,61 @@
+# The stack the black-box suite runs against. Deliberately self-contained rather than an overlay on
+# compose.yaml, for two reasons:
+#
+#  1. compose.yaml publishes 5432 on the host so that `./gradlew bootRun` can reach it. Compose
+#     merges `ports` by appending, so an overlay cannot remove it - and a black-box run would then
+#     collide with any dev database already running. The plan this file implements asked for an
+#     overlay plus `ports: !reset []`; Testcontainers parses compose files with a plain YAML parser
+#     that does not understand the `!reset` tag, so that was not safe.
+#  2. No host ports are published here at all. Testcontainers adds random host mappings for exactly
+#     the services it is told about, so a black-box run can never collide with anything.
+#
+# The cost is that the postgres service is described in two files. Keep them in step: the image,
+# database name, user and password must match compose.yaml, or `bootRun` and the suite will diverge.
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: quotes
+      POSTGRES_USER: quotes
+      POSTGRES_PASSWORD: quotes
+    # Creates the read-only role the suite asserts through. Runs before Flyway, which runs later
+    # from the app container.
+    volumes:
+      - ./docker/postgres-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U quotes -d quotes"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  # Stands in for the downstream rate service. The suite programs it through its admin API.
+  wiremock:
+    image: wiremock/wiremock:3.13.1
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/__admin/health"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  app:
+    image: quotes:blackbox
+    depends_on:
+      postgres:
+        condition: service_healthy
+      wiremock:
+        condition: service_healthy
+    environment:
+      # The only channel through which the image is configured. Nothing here reaches into the
+      # application's classes; the app is a black box even to its own build.
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/quotes
+      SPRING_DATASOURCE_USERNAME: quotes
+      SPRING_DATASOURCE_PASSWORD: quotes
+      SPRING_DATASOURCE_DRIVER_CLASS_NAME: org.postgresql.Driver
+      APP_RATE_BASE_URL: http://wiremock:8080
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/actuator/health/readiness"]
+      interval: 2s
+      timeout: 2s
+      retries: 60
+      start_period: 30s

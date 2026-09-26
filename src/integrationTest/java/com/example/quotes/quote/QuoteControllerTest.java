@@ -17,6 +17,7 @@ import static org.hamcrest.Matchers.endsWith;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -27,7 +28,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * fast while still exercising JSON binding, bean validation and error mapping.
  */
 @WebMvcTest(QuoteController.class)
-@DisplayName("POST /api/v1/quotes")
+@DisplayName("/api/v1/quotes web slice")
 class QuoteControllerTest {
 
     private static final String VALID_COMMAND = """
@@ -79,6 +80,31 @@ class QuoteControllerTest {
                 .andExpect(status().isBadRequest());
 
         then(this.quoteService).shouldHaveNoInteractions();
+    }
+
+    @Test
+    void returns_a_stored_quote() throws Exception {
+        UUID id = UUID.fromString("22222222-2222-2222-2222-222222222222");
+        given(this.quoteService.findQuote(id)).willReturn(new QuoteResponse(id, "cust-1", "WIDGET",
+                new BigDecimal("10000.00"), "USD", 12, new BigDecimal("4.2500"),
+                new BigDecimal("10425.00"), Instant.parse("2026-01-15T10:30:00Z")));
+
+        this.mockMvc.perform(get("/api/v1/quotes/{id}", id))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.quoteId").value(id.toString()))
+                .andExpect(jsonPath("$.customerId").value("cust-1"))
+                .andExpect(jsonPath("$.total").value(10425.00));
+    }
+
+    @Test
+    void reports_an_unknown_quote_as_a_404_problem() throws Exception {
+        UUID id = UUID.fromString("33333333-3333-3333-3333-333333333333");
+        given(this.quoteService.findQuote(id)).willThrow(new QuoteNotFoundException(id));
+
+        this.mockMvc.perform(get("/api/v1/quotes/{id}", id))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.title").value("Quote not found"))
+                .andExpect(jsonPath("$.type").value("urn:problem:quote-not-found"));
     }
 
     @Test
