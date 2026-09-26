@@ -4,7 +4,7 @@ import java.io.File;
 import java.time.Duration;
 import java.util.concurrent.TimeUnit;
 
-import org.testcontainers.containers.DockerComposeContainer;
+import org.testcontainers.containers.ComposeContainer;
 import org.testcontainers.containers.output.OutputFrame;
 import org.testcontainers.containers.wait.strategy.Wait;
 
@@ -47,11 +47,7 @@ public final class BlackboxStack {
 
     private static final String DEFAULT_DATABASE = "quotes";
 
-    // Raw type: DockerComposeContainer is declared as DockerComposeContainer<SELF extends
-    // DockerComposeContainer<SELF>>, which a wildcard cannot satisfy at a call site, so chaining
-    // through it does not typecheck. The methods used here take no type parameters of their own.
-    @SuppressWarnings("rawtypes")
-    private static DockerComposeContainer stack;
+    private static ComposeContainer stack;
 
     private BlackboxStack() {
     }
@@ -84,31 +80,32 @@ public final class BlackboxStack {
                 + "'blackbox.composeFile' or run from inside the repository.");
     }
 
-    @SuppressWarnings({"rawtypes", "unchecked"})
+    /**
+     * ComposeContainer is Testcontainers' Compose v2 support. The older DockerComposeContainer looks
+     * for v1 container names ({@code project_app_1}); Compose v2 names them {@code project-app-1}, so
+     * with v2 it reported the running app as "not running". ComposeContainer runs {@code docker
+     * compose} in a helper container, so no {@code docker-compose} binary is needed on the host.
+     */
     private static void start(File composeFile) {
-        DockerComposeContainer container = new DockerComposeContainer(composeFile);
-        // Each call is a statement rather than a chain, for the raw-type reason above.
-        //
-        // The wait strategy is supplied per service rather than via `withOptions("--wait")`:
-        // Testcontainers builds the command as `docker compose <options> up -d`, and `--wait` is an
-        // option of `up` rather than a global one, so it produced `--wait up -d` and compose
-        // rejected the command outright.
-        container.withExposedService(APP, APP_PORT,
-                Wait.forHttp("/actuator/health/readiness")
-                        .forStatusCode(200)
-                        .withStartupTimeout(Duration.ofMinutes(3)));
-        container.withExposedService(WIREMOCK, WIREMOCK_PORT,
-                Wait.forHttp("/__admin/health").forStatusCode(200));
-        // Postgres needs no HTTP check: the application will not start until it is healthy, and the
-        // app's readiness is what is actually waited on above.
-        container.withExposedService(POSTGRES, POSTGRES_PORT);
-        container.withRemoveVolumes(true);
-        container.withStartupTimeout(Duration.ofMinutes(5));
-        // Pipe container output into the build log. When a scenario fails, the application's own
-        // exception is usually the fastest explanation and Testcontainers is about to delete it.
-        // The frame is cast because the raw receiver erases the parameter to Consumer<Object>.
-        container.withLogConsumer(APP, frame -> log((OutputFrame) frame));
-        container.withLogConsumer(WIREMOCK, frame -> log((OutputFrame) frame));
+        ComposeContainer container = new ComposeContainer(composeFile)
+                // quotes:blackbox exists only in the local daemon, built by :dockerImage. The default
+                // is to pull every image first, which would look for it on Docker Hub and fail.
+                .withPull(false)
+                .withExposedService(APP, APP_PORT,
+                        Wait.forHttp("/actuator/health/readiness")
+                                .forStatusCode(200)
+                                .withStartupTimeout(Duration.ofMinutes(3)))
+                .withExposedService(WIREMOCK, WIREMOCK_PORT,
+                        Wait.forHttp("/__admin/health").forStatusCode(200))
+                // The app will not start until Postgres is healthy (depends_on), and the app's
+                // readiness is what is waited on above.
+                .withExposedService(POSTGRES, POSTGRES_PORT)
+                .withRemoveVolumes(true)
+                .withStartupTimeout(Duration.ofMinutes(5))
+                // Stream container output into the build log while the stack runs. When a scenario
+                // fails, the application's own exception is usually the fastest explanation.
+                .withLogConsumer(APP, BlackboxStack::log)
+                .withLogConsumer(WIREMOCK, BlackboxStack::log);
         try {
             container.start();
         }

@@ -60,18 +60,6 @@ jobs:
           java-version: "21"
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
-      - name: Provide a docker-compose shim
-        # Testcontainers' local compose mode shells out to an executable literally named
-        # `docker-compose`. GitHub runners ship the Compose v2 plugin (`docker compose`) but no
-        # binary of that name, so the suite fails with "Local Docker Compose not found. Is
-        # docker-compose on the PATH?" before it starts anything. Forward one to the other.
-        run: |
-          sudo tee /usr/local/bin/docker-compose >/dev/null <<'SH'
-          #!/bin/sh
-          exec docker compose "$@"
-          SH
-          sudo chmod +x /usr/local/bin/docker-compose
-          docker-compose version
       - name: Run the black-box suite
         run: ./gradlew :blackbox:test
       - name: Container logs
