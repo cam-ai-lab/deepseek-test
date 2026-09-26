@@ -319,13 +319,17 @@ Several other recommendations were deliberately **not** implemented yet, in roug
 
 ## 11. What has been verified, and what hasn't
 
-**Verified by running it.** All four tiers compile. The unit tier refuses to compile a test that
+**Verified by running it.** All three tiers compile. The unit tier refuses to compile a test that
 references `@SpringBootTest`. The budget guard fails when the budget is set too low. The classpath
-guard caught a real leak. All the timings and counts in this document are measured output. The full
-build is green with 43 tests and 98.2% line coverage, and the continuous integration pipeline runs
-both jobs successfully.
+guard caught a real leak. All the timings and counts in this document are measured output. The build
+is green at 98.2% line coverage.
 
-**Previously unverified, now confirmed.** The container tier had never run, because the machine this
-was built on has no Docker. It was pushed to continuous integration specifically to settle that, and
-it passed there — the PostgreSQL container starts, the database migration runs, and the tests pass
-against the real engine.
+**Where the verification happens, and why that changed.** This repository was built on a machine with
+no container runtime at all, so anything involving a database can only be verified in continuous
+integration. That is less a flaw than a consequence of the deliberate choice in section 9: if the
+database tests use a real database, they need a real database from somewhere. The unit tier is the
+exception — it runs anywhere, with nothing installed.
+
+The move to PostgreSQL was compile-checked locally and then confirmed in CI on its first run: the
+container starts, Flyway applies the migration to the real engine, the persistence slice's
+plain-JDBC assertions confirm the running engine really is PostgreSQL, and no test skipped.
