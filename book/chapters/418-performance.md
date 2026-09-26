@@ -150,6 +150,40 @@ public class QuoteSmokeSimulation extends Simulation {
 Run it with `./gradlew :blackbox:gatlingRun` (the Gatling Gradle plugin adds a `gatling` source set
 and that task). The HTML report shows percentiles over time, throughput, and errors per request.
 
+::: {.callout .hood}
+Under the hood: the classpath the compiler didn't check
+
+The simulation's first nightly run crashed before sending a request:
+`NoClassDefFoundError: org/testcontainers/…/WaitStrategy`. The `gatling` source set sees the module's
+main *classes* (`BlackboxStack`) but not main's *dependencies* (Testcontainers). Compilation passed,
+because the simulation never names a Testcontainers type itself — only `BlackboxStack` does, and it
+was already compiled. The fix is one declaration in `blackbox/build.gradle.kts`:
+
+```kotlin
+configurations.named("gatlingImplementation") {
+    extendsFrom(configurations.implementation.get())
+}
+```
+
+A compile-only check can't see a runtime classpath gap. Only running the thing can — the same lesson
+as the Dockerfile's missing launcher in chapter 14, one level down.
+:::
+
+Once fixed, a run on a standard GitHub runner looked like this:
+
+| Metric | Value |
+| --- | --- |
+| Requests (create + fetch) | 2,714, none failed |
+| Mean / p50 | 6 ms / 5 ms |
+| p95 / p99 | 16 ms / 25 ms |
+| Max | 347 ms |
+| Assertions | 0% failed; p95 < 300 ms; p99 < 800 ms — all passed |
+
+Notice the max: fourteen times the p99. A single outlier like that is typical of JIT warm-up, a
+garbage-collection pause or a noisy neighbour on the runner — the report's latency-over-time chart
+shows which. That's why the assertions sit on percentiles, never on the max, and why the injection
+profile ramps up first.
+
 ## 18.5 A smoke test, not a benchmark
 
 The simulation runs against containers on whatever machine executes it — a laptop or a shared CI
