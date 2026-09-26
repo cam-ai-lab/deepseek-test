@@ -62,19 +62,6 @@ jobs:
         uses: gradle/actions/setup-gradle@v6
       - name: Run the black-box suite
         run: ./gradlew :blackbox:test
-      - name: Known bugs still reproduce
-        # Informational, never blocking. Each @known-bug scenario states the CORRECT behaviour, so
-        # today it should fail. When one starts passing, the bug was fixed: delete its tag.
-        if: success()
-        run: |
-          ./gradlew :blackbox:test -Ptags=@known-bug || true
-          report=blackbox/build/test-results/cucumber.xml
-          total=$(grep -o 'tests="[0-9]*"' "$report" | head -1 | grep -o '[0-9]*')
-          failing=$(grep -o 'failures="[0-9]*"' "$report" | head -1 | grep -o '[0-9]*')
-          echo "Known bugs: $failing of $total still reproduce."
-          if [ "$failing" != "$total" ]; then
-            echo "::warning::$((total - failing)) @known-bug scenario(s) now pass - remove their tag."
-          fi
       - name: Container logs
         if: failure()
         # Best effort: Testcontainers runs the stack under a random compose project name and removes
@@ -94,3 +81,16 @@ jobs:
             blackbox/build/reports/cucumber/
             blackbox/build/test-results/
           if-no-files-found: ignore
+      - name: Known bugs still reproduce
+        # Informational, never blocking. Each @known-bug scenario states the CORRECT behaviour, so
+        # today it should fail. When one starts passing, the bug was fixed: delete its tag.
+        if: success()
+        run: |
+          ./gradlew :blackbox:test -Ptags=@known-bug || true
+          report=blackbox/build/test-results/cucumber.xml
+          total=$(grep -o 'tests="[0-9]*"' "$report" | head -1 | grep -o '[0-9]*')
+          failing=$(grep -o 'failures="[0-9]*"' "$report" | head -1 | grep -o '[0-9]*')
+          echo "Known bugs: $failing of $total still reproduce."
+          if [ "$failing" != "$total" ]; then
+            echo "::warning::$((total - failing)) @known-bug scenario(s) now pass - remove their tag."
+          fi
