@@ -30,8 +30,7 @@ val cucumberVersion = "8.0.2"
 val testcontainersVersion = "2.0.5"
 val restAssuredVersion = "5.5.6"
 val springVersion = "6.2.11"
-val wiremockVersion = "3.13.1"
-val jsonUnitVersion = "4.1.0"
+val wiremockVersion = "3.13.2"
 val assertjVersion = "3.27.7"
 val postgresVersion = "42.7.13"
 val jacksonVersion = "2.21.5"
@@ -65,8 +64,6 @@ dependencies {
     // The admin client only; the WireMock server itself runs as a container.
     testImplementation("org.wiremock:wiremock:$wiremockVersion")
     testImplementation("org.assertj:assertj-core:$assertjVersion")
-    // Compares JSON text, so the number scale is asserted rather than just the value.
-    testImplementation("net.javacrumbs.json-unit:json-unit-assertj:$jsonUnitVersion")
 
     testRuntimeOnly("org.postgresql:postgresql:$postgresVersion")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
@@ -122,8 +119,13 @@ val verifyBlackboxIsolation = tasks.register("verifyBlackboxIsolation") {
     group = "verification"
     description = "Fails if the suite has acquired a dependency on the application's code."
 
-    val classpaths = listOf("compileClasspath", "testCompileClasspath", "runtimeClasspath", "testRuntimeClasspath")
+    val classpaths = listOf(
+        "compileClasspath", "testCompileClasspath", "runtimeClasspath", "testRuntimeClasspath",
+        "gatlingCompileClasspath", "gatlingRuntimeClasspath"
+    )
         .map { configurations.named(it) }
+
+    val ownBuildDir = layout.buildDirectory.get().asFile
 
     doLast {
         val projectDependencies = classpaths
@@ -144,6 +146,8 @@ val verifyBlackboxIsolation = tasks.register("verifyBlackboxIsolation") {
 
         val applicationBytecode = classpaths
             .flatMap { it.get().files }
+            // This module's own classes (BlackboxStack, used by the Gatling source set) are fine.
+            .filterNot { it.startsWith(ownBuildDir) }
             .filter { file ->
                 file.path.contains("classes/java/main") ||
                     file.name == "application.jar" ||

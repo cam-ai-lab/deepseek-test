@@ -24,6 +24,9 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/*
 
+# Run as an unprivileged user rather than root.
+RUN useradd --system --uid 10001 --no-create-home app
+
 WORKDIR /application
 COPY --from=extract /builder/extracted/dependencies/ ./
 COPY --from=extract /builder/extracted/snapshot-dependencies/ ./
@@ -33,6 +36,7 @@ COPY --from=extract /builder/extracted/application/ ./
 # compose.blackbox.yaml for the values the black-box suite supplies.
 ENV JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=75"
 
+USER app
 EXPOSE 8080
 
 HEALTHCHECK --interval=2s --timeout=2s --start-period=30s --retries=30 \

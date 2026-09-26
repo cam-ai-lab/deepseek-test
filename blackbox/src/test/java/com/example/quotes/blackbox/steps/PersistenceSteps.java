@@ -37,6 +37,9 @@ public class PersistenceSteps {
                 .as("stored totals keep the column's scale")
                 .isEqualTo(new BigDecimal(expectedTotal).scale());
         assertThat(this.quoteDb.storedRateFor(customerId)).isEqualByComparingTo(new BigDecimal(expectedRate));
+        assertThat(this.quoteDb.storedRateFor(customerId).scale())
+                .as("stored rates keep the column's scale")
+                .isEqualTo(new BigDecimal(expectedRate).scale());
     }
 
     @Then("the stored quote is for {int} months")

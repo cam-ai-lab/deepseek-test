@@ -86,8 +86,15 @@ jobs:
         # today it should fail. When one starts passing, the bug was fixed: delete its tag.
         if: success()
         run: |
-          ./gradlew :blackbox:test -Ptags=@known-bug || true
           report=blackbox/build/test-results/cucumber.xml
+          # Remove the default run's report first, so a known-bug run that dies before Cucumber
+          # writes its own cannot be misread as "all known bugs now pass".
+          rm -f "$report"
+          ./gradlew :blackbox:test -Ptags=@known-bug || true
+          if [ ! -f "$report" ]; then
+            echo "::warning::The @known-bug run produced no Cucumber report; see the log above."
+            exit 0
+          fi
           total=$(grep -o 'tests="[0-9]*"' "$report" | head -1 | grep -o '[0-9]*')
           failing=$(grep -o 'failures="[0-9]*"' "$report" | head -1 | grep -o '[0-9]*')
           echo "Known bugs: $failing of $total still reproduce."
