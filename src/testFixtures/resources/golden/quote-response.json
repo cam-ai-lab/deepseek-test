@@ -1,0 +1,11 @@
+{
+  "quoteId": "<quoteId>",
+  "customerId": "golden-customer",
+  "productCode": "WIDGET",
+  "amount": 10000.00,
+  "currency": "USD",
+  "termMonths": 12,
+  "annualRatePercent": 4.25,
+  "total": 10425.00,
+  "createdAt": "<createdAt>"
+}

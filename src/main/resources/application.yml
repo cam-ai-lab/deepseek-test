@@ -1,0 +1,34 @@
+spring:
+  application:
+    name: quotes
+  datasource:
+    url: jdbc:h2:mem:quotes;DB_CLOSE_DELAY=-1;MODE=PostgreSQL
+    username: sa
+    password: ""
+    driver-class-name: org.h2.Driver
+  jpa:
+    hibernate:
+      # Flyway owns the schema; Hibernate only proves the entity mapping still matches it.
+      ddl-auto: validate
+    open-in-view: false
+  flyway:
+    enabled: true
+  mvc:
+    problemdetails:
+      enabled: true
+
+app:
+  rate:
+    base-url: http://localhost:8081
+    connect-timeout: 2s
+    read-timeout: 3s
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
