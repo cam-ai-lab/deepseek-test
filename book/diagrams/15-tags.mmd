@@ -1,0 +1,6 @@
+flowchart LR
+    A["All scenarios"] --> F{"tag filter<br/>default: not @wip and not @known-bug"}
+    F -->|"runs, blocks the merge"| R["Regular scenarios"]
+    F -->|"skipped"| W["@wip: being written"]
+    F -->|"skipped"| K["@known-bug: failing on purpose,<br/>linked to a ticket"]
+    K -. "bug fixed: remove tag" .-> R

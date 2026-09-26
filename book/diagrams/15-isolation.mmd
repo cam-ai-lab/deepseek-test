@@ -1,0 +1,6 @@
+flowchart TB
+    S1["Scenario 1<br/>customerId bb-7f3a…"] --> DB[("Shared database<br/>rows never deleted")]
+    S2["Scenario 2<br/>customerId bb-c91e…"] --> DB
+    S3["Scenario 3<br/>customerId bb-02d4…"] --> DB
+    DB --> Q["Each scenario queries<br/>WHERE customer_id = its own id"]
+    W["WireMock stubs: global"] --> R["@Before hook resets them<br/>and scenarios run serially"]

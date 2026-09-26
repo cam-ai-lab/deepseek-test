@@ -1,0 +1,8 @@
+flowchart LR
+    PR["Pull request"] --> J1["Job 1: unit + integration<br/>./gradlew check -x :blackbox:test"]
+    PR --> J2["Job 2: black-box<br/>./gradlew :blackbox:test"]
+    J1 --> M{"Both green?"}
+    J2 --> M
+    M -- yes --> MERGE["Merge allowed"]
+    M -- no --> BLOCK["Merge blocked"]
+    N["Nightly schedule"] --> J3["Gatling smoke<br/>reports, does not block"]

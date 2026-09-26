@@ -1,0 +1,7 @@
+flowchart TB
+    F["create_quote.feature<br/>Given / When / Then"] -->|"text matched by<br/>Cucumber expressions"| S["Step definitions<br/>QuoteSteps.java"]
+    S --> SC["ScenarioContext<br/>(state for one scenario)"]
+    S --> RA["REST-assured"]
+    S --> WM["WireMock admin client"]
+    S --> DB["Read-only JdbcTemplate"]
+    RA -->|"HTTP"| APP["App under test"]

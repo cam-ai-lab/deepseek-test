@@ -1,0 +1,7 @@
+flowchart LR
+    SP["Spec or property<br/>(OpenAPI, invariant)"] --> GEN["Generate many inputs"]
+    GEN --> RUN["Call the system"]
+    RUN --> CHK{"Invariant holds?<br/>no 5xx, schema-valid,<br/>total ≥ amount"}
+    CHK -- yes --> GEN
+    CHK -- no --> SH["Shrink to the smallest<br/>failing input"]
+    SH --> REP["Report a reproducible case"]

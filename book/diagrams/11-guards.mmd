@@ -1,0 +1,8 @@
+flowchart LR
+    C["./gradlew check"] --> T["test"]
+    C --> I["integrationTest"]
+    C --> S["systemTest"]
+    C --> G1["verifyTierClasspaths<br/>no Spring test jars in unit tier"]
+    C --> G2["verifyContextBudget<br/>too many contexts booted?"]
+    C --> G3["jacocoTestCoverageVerification<br/>at least 85% lines"]
+    T & I & S -.-> F["failOnNoDiscoveredTests<br/>zero tests is a failure"]

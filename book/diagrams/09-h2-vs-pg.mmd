@@ -1,0 +1,9 @@
+flowchart TB
+    subgraph Fake["Tests on H2 (in-memory)"]
+      m1["Migration V2 uses jsonb"] --> x1["Fails, or is rewritten<br/>to satisfy H2"]
+      q1["Query uses ON CONFLICT"] --> x2["Different behaviour"]
+    end
+    subgraph Real["Tests on PostgreSQL container"]
+      m2["Same migration"] --> ok1["Runs exactly as in production"]
+      q2["Same query"] --> ok2["Same behaviour as production"]
+    end
