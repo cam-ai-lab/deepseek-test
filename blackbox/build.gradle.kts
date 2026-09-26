@@ -103,6 +103,13 @@ tasks.test {
 
 // The performance smoke test runs against the same image and stack as the Cucumber suite. It is a
 // nightly job, not a merge gate: latency on shared CI runners is too noisy to block on.
+// The simulation uses BlackboxStack from src/main. The Gatling source set gets main's *classes* but not
+// its dependencies, so without this Testcontainers is missing at runtime (NoClassDefFoundError) even
+// though compileGatlingJava passes.
+configurations.named("gatlingImplementation") {
+    extendsFrom(configurations.implementation.get())
+}
+
 dependencies {
     gatlingImplementation("org.wiremock:wiremock:$wiremockVersion")
 }
