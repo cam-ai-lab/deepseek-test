@@ -28,7 +28,7 @@ repositories {
 
 val cucumberVersion = "8.0.2"
 val testcontainersVersion = "2.0.5"
-val restAssuredVersion = "5.5.6"
+val restAssuredVersion = "6.0.1"
 val springVersion = "6.2.11"
 val wiremockVersion = "3.13.2"
 val assertjVersion = "3.27.7"
