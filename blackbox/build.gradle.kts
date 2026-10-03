@@ -26,7 +26,7 @@ repositories {
     mavenCentral()
 }
 
-val cucumberVersion = "8.0.2"
+val cucumberVersion = "8.0.3"
 val testcontainersVersion = "2.0.5"
 val restAssuredVersion = "5.5.6"
 val springVersion = "6.2.11"
