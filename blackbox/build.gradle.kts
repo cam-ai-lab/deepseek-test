@@ -33,7 +33,7 @@ val springVersion = "6.2.11"
 val wiremockVersion = "3.13.2"
 val assertjVersion = "3.27.7"
 val postgresVersion = "42.7.13"
-val jacksonVersion = "2.21.5"
+val jacksonVersion = "2.22.3"
 
 dependencies {
     // BlackboxStack is shared by the Cucumber suite and the Gatling simulation, so it lives in main.
